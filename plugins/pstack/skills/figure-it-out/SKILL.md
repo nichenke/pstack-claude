@@ -19,7 +19,7 @@ Ground first, then commit. Don't start the run until you can state:
 - Scope, quantified: rough units and effort, plus the blockers grounding surfaced.
 - The rigor level, biased high. One-way doors and high blast radius get more. Reversible low-stakes steps get less. Rigor is gates and artifacts, not "try harder".
 
-Present the framing and tradeoffs before committing to a long run. Reversible work proceeds (the **never-block-on-the-human** principle skill), but a multi-hour run earns one checkpoint.
+Post the framing and tradeoffs as a message, and record the predicate as the first `decisions.tsv` row. Then keep going. Reversible work doesn't wait for a reply (the **never-block-on-the-human** principle skill), so the checkpoint is the posted framing, which the human can redirect. Stop for an answer only before an irreversible step.
 
 ## Phase B: Design the workflow
 
