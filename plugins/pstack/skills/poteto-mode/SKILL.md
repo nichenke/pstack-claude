@@ -11,7 +11,18 @@ Bundled skills live at `../<name>/SKILL.md` from this file, so put this file's a
 
 These skills use Claude Code tool names (the `Skill` tool, the `Agent` tool, `AskUserQuestion`) and the Claude model names the `Agent` tool accepts, as each Models section lists them. On Claude Code they work as written. On Codex, read [`references/codex-tools.md`](references/codex-tools.md) for the Codex equivalent of a Claude tool, model, or skill named by these workflows. On Pi, read [`references/pi-tools.md`](references/pi-tools.md) instead. On GitHub Copilot, CLI or app, read [`references/copilot-tools.md`](references/copilot-tools.md) instead. Other runtimes can discover the same Agent Skills tree, but they must use their own tool, model, and configuration equivalents. No one of these mappings is a cross-runtime map.
 
-Use the session's task-tracking tools for the todolist. On Claude Code these are `TaskCreate` and `TaskUpdate`, or `TodoWrite` when configured. Availability depends on the model; `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` enables them through the environment or a project's `.claude/settings.local.json` `env` block. See the [task-tool documentation](https://code.claude.com/docs/en/tools-reference#task-tool-availability). If no task-tracking tool is available, keep an uncommitted `todo.md` Markdown checklist in the work dir, next to the decision trail, with the playbook steps verbatim and each `skip: <reason>` line. When several sessions share the checkout, name it `.audit/<task-slug>.todo.md`, beside that session's `.audit/<task-slug>.tsv` trail, so they never write one file.
+The todolist is the uncommitted `todo.md` that **Start the run** writes. Mirror it into the session's task-tracking tools only when they are already loaded. On Claude Code these are `TaskCreate` and `TaskUpdate`, or `TodoWrite` when configured. Availability depends on the model; `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` enables them through the environment or a project's `.claude/settings.local.json` `env` block. See the [task-tool documentation](https://code.claude.com/docs/en/tools-reference#task-tool-availability). A deferred or absent tool is no reason to skip the list. When several sessions share the checkout, name it `.audit/<task-slug>.todo.md`, beside that session's `.audit/<task-slug>.tsv` trail, so they never write one file.
+
+## Start the run
+
+Do this before any other work on the task, including reading its code.
+
+1. Match the task to a playbook in **Playbooks** below. A large or cross-cutting effort, or work the user steps away from, is `figure-it-out`.
+2. Run `node <this skill's base directory>/scripts/open-run.mjs <playbook> <work-dir>`, using the session scratchpad as the work dir when there is one. It copies the playbook's steps into `todo.md`, adds the commit and PR gates, and starts `decisions.tsv` for the **show-me-your-work** skill. Then read the playbook file.
+3. Work from `todo.md`. Check off each step as it lands and add a `decisions.tsv` row for each decision. A step you drop keeps its line with `skip: <reason>`.
+4. Before the final reply, run `node <this skill's base directory>/scripts/open-run.mjs --check <work-dir>/todo.md` and resolve every line it prints.
+
+**Precedence.** The user's instructions and the harness's rules (CLAUDE.md, rules files, the system prompt) outrank this skill. When one blocks a step, as "commit or push only when the user asks" blocks Opening a PR, keep the step with `skip: <the rule that blocks it>` and name the rule in the reply. Don't drop the step silently, and don't break the rule to finish it.
 
 ## Non-negotiables
 
@@ -127,7 +138,7 @@ Comments follow the same rule as the reply. Write them clean as you go. Keep a c
 
 ## Playbooks
 
-Open a todolist whose first items are the matched playbook's steps, copied in verbatim, before any task-specific todos. A step you choose not to do stays in the list with a one-line `skip: <reason>`. Match the task to a playbook below and open its full steps at `playbooks/<title>.md`, with the title in kebab case, hyphens kept and other punctuation dropped, unless the entry gives its file. Copy its steps in verbatim.
+**Start the run** opens the todolist from the matched playbook's file, `playbooks/<title>.md` with the title in kebab case, hyphens kept and other punctuation dropped, unless the entry gives its file. Add task-specific todos after its steps.
 
 A large or cross-cutting effort (a migration across many call sites, an ambitious multi-part change), or work the user steps away from to trust later, routes to the **figure-it-out** skill even when a narrower playbook like Feature fits. Use **figure-it-out** whenever no bundled playbook fits. It designs a bespoke, rigorous playbook for the task. A standing project-scale program (multi-day, many stacked PRs, a fleet of subagents under one coordinator) routes to **Orchestrate** instead. figure-it-out designs one bespoke run, orchestrate runs the program.
 

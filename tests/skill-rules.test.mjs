@@ -34,12 +34,22 @@ const rules = [
   {
     source: "#72 task fallback keeps skipped steps",
     file: "poteto-mode/SKILL.md",
-    phrase: "with the playbook steps verbatim and each `skip: <reason>` line",
+    phrase: "A step you drop keeps its line with `skip: <reason>`.",
   },
   {
     source: "#72 task fallback is a local checklist",
     file: "poteto-mode/SKILL.md",
-    phrase: "an uncommitted `todo.md` Markdown checklist",
+    phrase: "The todolist is the uncommitted `todo.md` that **Start the run** writes.",
+  },
+  {
+    source: "0.9.36 harness rules outrank the skill",
+    file: "poteto-mode/SKILL.md",
+    phrase: "keep the step with `skip: <the rule that blocks it>` and name the rule in the reply",
+  },
+  {
+    source: "0.9.36 checkpoint does not wait",
+    file: "figure-it-out/SKILL.md",
+    phrase: "Stop for an answer only before an irreversible step.",
   },
   {
     source: "#229 parallel sessions keep separate todolists",
