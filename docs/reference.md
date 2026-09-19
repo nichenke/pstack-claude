@@ -78,7 +78,9 @@ Smaller tasks proceed directly. The full skill loads when invoked, and explicit 
 
 To disable routing, run `setup-pstack` and turn off the session hook. In Claude Code, use `/pstack:setup-pstack`. You can also write `session hook: off` in the runtime's sheet, at the path in [setup-pstack's runtime table](../plugins/pstack/skills/setup-pstack/SKILL.md#other-runtimes). The hook reads that setting before injecting its instruction. Without the setting, routing stays on.
 
-Skills-only installs and other runtimes do not include the hook or the Pi extension. Request `poteto-mode` explicitly, or add a standing instruction to the runtime's instruction file.
+The Claude Code plugin alone also registers a Stop hook, [`run-gate.mjs`](../plugins/pstack/hooks/run-gate.mjs), checks the `todo.md` that `poteto-mode`'s `open-run.mjs` wrote for the main session. While a step is neither checked off nor marked `skip:` or `n/a:`, it blocks the first stop and lists the open steps. A session that never ran `open-run.mjs` is untouched, and the second stop always goes through. `session hook: off` does not disable it, since it only acts on a list the run opened.
+
+Skills-only installs and other runtimes do not include the hooks or the Pi extension. Request `poteto-mode` explicitly, or add a standing instruction to the runtime's instruction file.
 
 ### Shared skills installation
 
