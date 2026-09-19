@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Stop hook: holds the main session's stop while the todo.md that open-run
-// wrote for it still has a step that is neither checked off nor skipped.
+// Stop hook: blocks the main session's first stop when the latest todo.md that
+// open-run reported still has a step not checked off or marked skip: or n/a:.
+// A second stop goes through.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
