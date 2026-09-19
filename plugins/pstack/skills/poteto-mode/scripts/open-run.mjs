@@ -66,8 +66,8 @@ function open(name, dir) {
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
 	fs.mkdirSync(dir, { recursive: true });
-	const todo = path.join(dir, "todo.md");
-	const trail = path.join(dir, "decisions.tsv");
+	const todo = path.resolve(dir, "todo.md");
+	const trail = path.resolve(dir, "decisions.tsv");
 
 	if (fs.existsSync(todo)) {
 		console.log(`${todo} exists; left as is`);

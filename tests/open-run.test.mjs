@@ -100,6 +100,12 @@ describe("open-run", () => {
       expect(readFileSync(join(dir, "decisions.tsv"), "utf8")).toBe("rows\n");
     }));
 
+  test("prints the list's absolute path, which the Stop hook reads back", () =>
+    withDir((dir) => {
+      const result = spawnSync("node", [script, "feature", "run"], { cwd: dir, encoding: "utf8" });
+      expect(result.stdout).toMatch(new RegExp(`^/\\S*/run/todo\\.md: 8 steps`, "m"));
+    }));
+
   test("rejects an unknown playbook and writes nothing", () =>
     withDir((dir) => {
       const result = run("no-such-playbook", dir);

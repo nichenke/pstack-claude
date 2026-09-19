@@ -15,12 +15,12 @@ The todolist is the uncommitted `todo.md` that **Start the run** writes. Mirror 
 
 ## Start the run
 
-Do this before any other work on the task, including reading its code.
+Do this before any other work on the task, including reading its code. A subagent spawned to carry out one playbook step skips it and works from its brief, since the parent's list already holds that step.
 
 1. Match the task to a playbook in **Playbooks** below. A large or cross-cutting effort, or work the user steps away from, is `figure-it-out`.
 2. Run `node <this skill's base directory>/scripts/open-run.mjs <playbook> <work-dir>`, using the session scratchpad as the work dir when there is one. It copies the playbook's steps into `todo.md`, adds the commit and PR gates, and starts `decisions.tsv` for the **show-me-your-work** skill. Then read the playbook file.
 3. Work from `todo.md`. Check off each step as it lands and add a `decisions.tsv` row for each decision. A step you drop keeps its line with `skip: <reason>`.
-4. Before the final reply, run `node <this skill's base directory>/scripts/open-run.mjs --check <work-dir>/todo.md` and resolve every line it prints.
+4. Before the final reply, run `node <this skill's base directory>/scripts/open-run.mjs --check <work-dir>/todo.md` and resolve every line it prints. On Claude Code the plugin's Stop hook runs the same check and holds the first stop while a line is open.
 
 **Precedence.** The user's instructions and the harness's rules (CLAUDE.md, rules files, the system prompt) outrank this skill. When one blocks a step, as "commit or push only when the user asks" blocks Opening a PR, keep the step with `skip: <the rule that blocks it>` and name the rule in the reply. Don't drop the step silently, and don't break the rule to finish it.
 
