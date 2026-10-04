@@ -18,7 +18,7 @@ The todolist is the uncommitted `todo.md` that **Start the run** writes. Mirror 
 Do this before any other work on the task, including reading its code. A subagent spawned to carry out one playbook step skips it and works from its brief, since the parent's list already holds that step.
 
 1. Match the task to a playbook in **Playbooks** below. A large or cross-cutting effort, or work the user steps away from, is `figure-it-out`.
-2. Run `node <this skill's base directory>/scripts/open-run.mjs <playbook> <work-dir>`, using the session scratchpad as the work dir when there is one. It copies the playbook's steps into `todo.md`, adds the commit and PR gates, and starts `decisions.tsv` for the **show-me-your-work** skill. Then read the playbook file.
+2. Run `node <this skill's base directory>/scripts/open-run.mjs <playbook> <work-dir>`, using the session scratchpad as the work dir when there is one. It copies the playbook's steps into `todo.md`, adds the commit and PR gates, and starts `decisions.tsv` for the **show-me-your-work** skill. Then read the playbook file. When a project playbook applies (see **Project playbooks**), pass a standalone one by its path; for one that extends a bundled playbook, open the bundled one by name and apply the project playbook's changes to `todo.md`.
 3. Work from `todo.md`. Check off each step as it lands and add a `decisions.tsv` row for each decision. A step you drop keeps its line with `skip: <reason>`.
 4. Before the final reply, run `node <this skill's base directory>/scripts/open-run.mjs --check <work-dir>/todo.md` and resolve every line it prints. On Claude Code the plugin's Stop hook runs the same check and holds the first stop while a line is open.
 

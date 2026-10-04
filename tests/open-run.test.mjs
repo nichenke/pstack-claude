@@ -106,6 +106,37 @@ describe("open-run", () => {
       expect(result.stdout).toMatch(new RegExp(`^/\\S*/run/todo\\.md: 8 steps`, "m"));
     }));
 
+  test("opens a standalone project playbook by its path", () =>
+    withDir((dir) => {
+      const playbook = join(dir, "deploy.md");
+      writeFileSync(
+        playbook,
+        "---\nextends:\nwhen: Shipping a release.\n---\n\n1. Tag the release.\n2. Run **Opening a PR**.\n",
+      );
+      const work = join(dir, "run");
+      expect(run(playbook, work).code).toBe(0);
+      const todo = readFileSync(join(work, "todo.md"), "utf8");
+      expect(todo.split("\n")[0]).toBe("# deploy");
+      expect(boxes(todo).slice(0, 2)).toEqual(["- [ ] 1. Tag the release.", "- [ ] 2. Run **Opening a PR**."]);
+      expect(todo).toContain("/deslop");
+    }));
+
+  test("rejects a project playbook that extends a bundled one and names the base", () =>
+    withDir((dir) => {
+      const playbook = join(dir, "our-bug-fix.md");
+      writeFileSync(playbook, '---\nextends: bug-fix\nwhen: A bug here.\n---\n\n- **After** "Reproduce" add a step.\n');
+      const result = run(playbook, join(dir, "run"));
+      expect(result.code).toBe(2);
+      expect(result.out).toContain("bug-fix");
+      expect(existsSync(join(dir, "run/todo.md"))).toBe(false);
+    }));
+
+  test("rejects a playbook path that does not exist and writes nothing", () =>
+    withDir((dir) => {
+      expect(run(join(dir, "missing.md"), dir).code).toBe(2);
+      expect(existsSync(join(dir, "todo.md"))).toBe(false);
+    }));
+
   test("rejects an unknown playbook and writes nothing", () =>
     withDir((dir) => {
       const result = run("no-such-playbook", dir);

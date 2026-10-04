@@ -17,7 +17,7 @@ const PR_GATES = [
 
 const usage = () => {
 	const names = fs.readdirSync(playbooks).map((f) => f.replace(/\.md$/, ""));
-	console.error("Usage: node open-run.mjs <playbook> <work-dir>");
+	console.error("Usage: node open-run.mjs <playbook | path/to/playbook.md> <work-dir>");
 	console.error("       node open-run.mjs --check <todo.md>");
 	console.error(`Playbooks: figure-it-out, ${names.sort().join(", ")}`);
 	process.exit(2);
@@ -55,12 +55,27 @@ function phaseSteps(lines) {
 	return lines.filter((line) => /^## Phase /.test(line)).map((line) => [line.replace(/^## /, "")]);
 }
 
-function open(name, dir) {
-	const figure = name === "figure-it-out";
-	const source = figure ? path.join(skills, "figure-it-out/SKILL.md") : path.join(playbooks, `${name}.md`);
-	if (!/^[a-z-]+$/.test(name) || !fs.existsSync(source)) usage();
+function open(playbook, dir) {
+	const project = playbook.endsWith(".md");
+	const name = project ? path.basename(playbook, ".md") : playbook;
+	const figure = !project && name === "figure-it-out";
+	const source = project
+		? path.resolve(playbook)
+		: figure
+			? path.join(skills, "figure-it-out/SKILL.md")
+			: path.join(playbooks, `${name}.md`);
+	if (!(project || /^[a-z-]+$/.test(name)) || !fs.existsSync(source)) usage();
 
 	const text = fs.readFileSync(source, "utf8");
+	const front = project ? (text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] ?? "") : "";
+	const bases = (front.match(/^extends:[ \t]*(.*)$/m)?.[1] ?? "")
+		.split(",")
+		.map((stem) => stem.trim())
+		.filter(Boolean);
+	if (bases.length) {
+		console.error(`${playbook} extends ${bases.join(", ")}. Open the bundled playbook by name, then apply its changes to todo.md.`);
+		process.exit(2);
+	}
 	const lines = outsideFences(text);
 	const steps = figure ? phaseSteps(lines) : numberedSteps(lines);
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
@@ -72,7 +87,7 @@ function open(name, dir) {
 	if (fs.existsSync(todo)) {
 		console.log(`${todo} exists; left as is`);
 	} else {
-		const body = [`# ${name}`, "", `Steps copied from ${path.relative(skills, source)}.`, ""];
+		const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
 		for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
 		if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
 		fs.writeFileSync(todo, body.join("\n") + "\n");
