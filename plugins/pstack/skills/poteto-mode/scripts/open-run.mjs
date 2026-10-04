@@ -107,7 +107,7 @@ function check(file) {
 		.split(/\r?\n/)
 		.forEach((line, i) => {
 			if (!line.startsWith("- [ ] ")) return;
-			if (/\b(skip|n\/a): *\S/.test(line)) return;
+			if (/\b(skip|n\/a): *(?!`?<)\S/.test(line)) return;
 			open.push(`${file}:${i + 1}: ${line.slice(6)}`);
 		});
 	for (const line of open) console.log(line);

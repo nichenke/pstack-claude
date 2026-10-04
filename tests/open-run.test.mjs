@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -168,5 +168,23 @@ describe("open-run --check", () => {
       const file = join(dir, "todo.md");
       writeFileSync(file, "- [ ] 1. dropped skip:\n");
       expect(run("--check", file).code).toBe(1);
+    }));
+
+  test("every box of every fresh list is open, the PR gate's skip template included", () =>
+    withDir((dir) => {
+      const names = readdirSync(join(mode, "playbooks")).map((f) => f.replace(/\.md$/, ""));
+      for (const name of ["figure-it-out", ...names]) {
+        run(name, join(dir, name));
+        const todo = join(dir, name, "todo.md");
+        expect(run("--check", todo).out).toContain(`\n${boxes(readFileSync(todo, "utf8")).length} open`);
+      }
+      expect(run("--check", join(dir, "bug-fix/todo.md")).out).toContain("Run **Opening a PR**, or keep this line");
+    }));
+
+  test("a placeholder skip reason does not count", () =>
+    withDir((dir) => {
+      const file = join(dir, "todo.md");
+      writeFileSync(file, "- [ ] 1. dropped skip: <reason>\n- [ ] 2. dropped `skip: <the rule>`\n");
+      expect(run("--check", file).out).toContain("2 open");
     }));
 });
