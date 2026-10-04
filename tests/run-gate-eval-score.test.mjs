@@ -93,6 +93,8 @@ describe("gate", () => {
   test("an empty skip reason is missing", () => expect(gate(false, todo, /no-comments/i)).toBe("missing"));
   test("open-run's unedited PR line, whose reason is a placeholder, is missing", () =>
     expect(gate(false, todo, /Opening a PR/)).toBe("missing"));
+  test("a checked-off line that carries a reason is still a skip", () =>
+    expect(gate(false, "- [x] /no-comments: skip: diff adds no comments.", /no-comments/i)).toBe("skipped"));
   test("a gate checked off that the run never did is claimed", () =>
     expect(gate(false, "- [x] Run `/deslop` over the diff before commit.", /deslop/i)).toBe("claimed"));
   test("no list and nothing done is missing", () => expect(gate(false, "", /deslop/i)).toBe("missing"));
