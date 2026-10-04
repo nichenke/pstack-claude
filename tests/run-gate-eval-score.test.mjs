@@ -56,6 +56,23 @@ describe("scoreStream", () => {
     expect(s.todoPath).toBe("/scratch/todo.md");
   });
 
+  test("a todo file written through a shell redirect counts as a hand-written list", () => {
+    const s = scoreStream([
+      init,
+      use("Bash", { command: "cd .worktrees/fix && cat > todo.md <<'EOF'\n- [ ] 1. Reproduce\nEOF" }),
+      use("Edit", { file_path: `${repo}/a.py` }),
+      use("Bash", { command: 'cat > "$TMPDIR/tally-json-todo.md" <<EOF\nx\nEOF' }),
+      done,
+    ]);
+    expect(s.list).toEqual({ kind: "todo.md", beforeFirstEdit: true });
+    expect(s.todoHints).toEqual(["todo.md", "$TMPDIR/tally-json-todo.md"]);
+  });
+
+  test("reading a todo file through the shell does not open a list", () => {
+    const s = scoreStream([init, use("Bash", { command: "cat todo.md; ls todo.md 2>&1" }), done]);
+    expect(s.list.kind).toBe(null);
+  });
+
   test("a subagent's tool calls neither open the list nor edit first, but its skills count", () => {
     const s = scoreStream([
       init,
