@@ -1,0 +1,1 @@
+load_ini and load_env in confload/config.py duplicate the same line cleanup and value unquoting. Pull that into one shared helper without changing what either function returns.
