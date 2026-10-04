@@ -1,0 +1,1 @@
+slugify('Hello -- World!') gives me 'hello----world-' instead of 'hello-world'. A run of separators should collapse into one, and a slug should never start or end with one. Can you fix it?

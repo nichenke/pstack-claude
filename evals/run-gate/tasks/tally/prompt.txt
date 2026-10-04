@@ -1,0 +1,1 @@
+Add a --json flag to tally. It should print one JSON array with an object per input, shaped {"file": ..., "lines": ..., "words": ..., "chars": ...}, with standard input showing up as "-". The plain output must stay exactly as it is.

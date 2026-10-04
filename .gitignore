@@ -19,3 +19,6 @@ plugins/pstack/skills/poteto-mode/scripts/node_modules/
 
 # Lake build output for the Lean models
 /lean/.lake/
+
+# Raw results from the run-gate eval
+evals/run-gate/results/
