@@ -90,12 +90,13 @@ const SKIPPED = /\b(skip|n\/a): *(?!`?<)\S/;
 
 /**
  * Classifies one commit or PR gate: done when the run did it, skipped when its todolist line
- * carries a reason, claimed when the line is checked off but the run never did it, else missing.
+ * carries a filled-in reason (checked off or not), claimed when the line is checked off with no
+ * reason but the run never did it, else missing.
  */
 export function gate(done, todo, line) {
   if (done) return "done";
   const lines = todo.split("\n").filter((l) => line.test(l));
-  if (lines.some((l) => l.startsWith("- [ ] ") && SKIPPED.test(l))) return "skipped";
+  if (lines.some((l) => SKIPPED.test(l))) return "skipped";
   if (lines.some((l) => /^- \[x\] /i.test(l))) return "claimed";
   return "missing";
 }
