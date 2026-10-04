@@ -100,10 +100,40 @@ export function gate(done, todo, line) {
   return "missing";
 }
 
+const NOT_WORK = /^.. (\.worktrees\/|\.claude\/)|__pycache__/;
+
+/**
+ * Picks the checkout that holds a run's work: a candidate may commit on a branch in a worktree
+ * under the repo rather than on main. Most commits past the root wins, then uncommitted edits,
+ * then the main checkout. `commits` counts every commit on any ref past the root.
+ */
+export function workTree(repo) {
+  const git = (cwd, ...args) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).stdout.trim();
+  const root = git(repo, "rev-list", "--max-parents=0", "HEAD").split("\n")[0];
+  const trees = git(repo, "worktree", "list", "--porcelain")
+    .split("\n")
+    .filter((line) => line.startsWith("worktree "))
+    .map((line, order) => {
+      const tree = line.slice("worktree ".length);
+      const status = git(tree, "status", "--porcelain").split("\n");
+      return {
+        path: tree,
+        ahead: Number(git(tree, "rev-list", "--count", `${root}..HEAD`) || 0),
+        dirty: status.some((entry) => entry && !NOT_WORK.test(entry)),
+        order,
+      };
+    })
+    .sort((a, b) => b.ahead - a.ahead || Number(b.dirty) - Number(a.dirty) || a.order - b.order);
+  return { path: trees[0].path, commits: Number(git(repo, "rev-list", "--count", "--all", `^${root}`) || 0) };
+}
+
 function unittest(repo, extra) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "score-"));
   try {
-    fs.cpSync(repo, dir, { recursive: true, filter: (src) => !src.includes(`${path.sep}.git`) });
+    fs.cpSync(repo, dir, {
+      recursive: true,
+      filter: (src) => !/\/(\.git|\.worktrees|__pycache__)(\/|$)/.test(src.slice(repo.length)),
+    });
     if (extra) fs.copyFileSync(extra, path.join(dir, "test_hidden.py"));
     const args = extra ? ["-m", "unittest", "test_hidden"] : ["-m", "unittest", "discover", "-s", "tests", "-t", "."];
     const run = spawnSync("python3", args, {
@@ -144,8 +174,7 @@ function scoreRun(runDir) {
   const decisionRows = fs.existsSync(trail)
     ? fs.readFileSync(trail, "utf8").split("\n").filter((l) => l.trim()).length - 1
     : 0;
-  const log = spawnSync("git", ["-C", meta.repo, "rev-list", "--count", "HEAD"], { encoding: "utf8" });
-  const commits = Number(log.stdout.trim() || 1) - 1;
+  const tree = workTree(meta.repo);
   const hidden = path.join(here, "tasks", meta.task, "hidden", "test_hidden.py");
 
   const exit = path.join(runDir, "exit.json");
@@ -160,14 +189,15 @@ function scoreRun(runDir) {
     checkRan: s.checkRan,
     gateBlocks: s.gateBlocks,
     decisionRows,
-    commits,
+    tree: tree.path,
+    commits: tree.commits,
     gates: {
       deslop: gate(s.skills.some((k) => /deslop/.test(k)), todo, /deslop/i),
       noComments: gate(s.skills.some((k) => /no-comments/.test(k)), todo, /no-comments/i),
       pr: gate(s.commands.some((c) => /\bgh pr create\b/.test(c)), todo, /Opening a PR/),
     },
-    visibleTests: unittest(meta.repo, null),
-    hiddenTests: unittest(meta.repo, hidden),
+    visibleTests: unittest(tree.path, null),
+    hiddenTests: unittest(tree.path, hidden),
     ...s.result,
   };
   fs.writeFileSync(path.join(runDir, "score.json"), JSON.stringify(score, null, 2) + "\n");

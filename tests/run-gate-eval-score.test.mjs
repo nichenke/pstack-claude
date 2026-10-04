@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { gate, scoreStream } from "../evals/run-gate/score.mjs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { gate, scoreStream, workTree } from "../evals/run-gate/score.mjs";
 
 const repo = "/work/slugkit-x1";
 let id = 0;
@@ -92,4 +96,41 @@ describe("gate", () => {
   test("a gate checked off that the run never did is claimed", () =>
     expect(gate(false, "- [x] Run `/deslop` over the diff before commit.", /deslop/i)).toBe("claimed"));
   test("no list and nothing done is missing", () => expect(gate(false, "", /deslop/i)).toBe("missing"));
+});
+
+describe("workTree", () => {
+  const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+  const fresh = () => {
+    const repo = mkdtempSync(join(tmpdir(), "score-tree-"));
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, "a.py"), "x = 1\n");
+    git(repo, "add", "-A");
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init");
+    return repo;
+  };
+  const commit = (cwd, text) => {
+    writeFileSync(join(cwd, "a.py"), text);
+    git(cwd, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "work");
+  };
+
+  test("an untouched repo is scored at its own root with no commits", () => {
+    const repo = fresh();
+    expect(workTree(repo)).toEqual({ path: realpathSync(repo), commits: 0 });
+  });
+
+  test("work committed in a worktree under the repo is scored there", () => {
+    const repo = fresh();
+    const tree = join(repo, ".worktrees", "fix");
+    git(repo, "worktree", "add", "-q", tree, "-b", "fix/x");
+    commit(tree, "x = 2\n");
+    commit(tree, "x = 3\n");
+    expect(workTree(repo)).toEqual({ path: realpathSync(tree), commits: 2 });
+  });
+
+  test("uncommitted edits on main beat an idle worktree", () => {
+    const repo = fresh();
+    git(repo, "worktree", "add", "-q", join(repo, ".worktrees", "idle"), "-b", "idle");
+    writeFileSync(join(repo, "a.py"), "x = 9\n");
+    expect(workTree(repo)).toEqual({ path: realpathSync(repo), commits: 0 });
+  });
 });
