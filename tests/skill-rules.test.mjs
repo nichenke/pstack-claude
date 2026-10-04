@@ -42,12 +42,12 @@ const rules = [
     phrase: "The todolist is the uncommitted `todo.md` that **Start the run** writes.",
   },
   {
-    source: "0.9.36 harness rules outrank the skill",
+    source: "0.9.68 harness rules outrank the skill",
     file: "poteto-mode/SKILL.md",
     phrase: "keep the step with `skip: <the rule that blocks it>` and name the rule in the reply",
   },
   {
-    source: "0.9.36 checkpoint does not wait",
+    source: "0.9.68 checkpoint does not wait",
     file: "figure-it-out/SKILL.md",
     phrase: "Stop for an answer only before an irreversible step.",
   },
