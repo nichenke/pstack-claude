@@ -130,6 +130,10 @@ describe("gate", () => {
   test("an empty skip reason is missing", () => expect(gate(false, todo, /no-comments/i)).toBe("missing"));
   test("open-run's unedited PR line, whose reason is a placeholder, is missing", () =>
     expect(gate(false, todo, /Opening a PR/)).toBe("missing"));
+  test("a BLOCKED line with a reason counts as skipped, a bare one as missing", () => {
+    expect(gate(false, "- [ ] Run **Opening a PR**. BLOCKED: independent review", /Opening a PR/)).toBe("skipped");
+    expect(gate(false, "- [ ] Run **Opening a PR**. BLOCKED:", /Opening a PR/)).toBe("missing");
+  });
   test("a checked-off line that carries a reason is still a skip", () =>
     expect(gate(false, "- [x] /no-comments: skip: diff adds no comments.", /no-comments/i)).toBe("skipped"));
   test("a gate checked off that the run never did is claimed", () =>

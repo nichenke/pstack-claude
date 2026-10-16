@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { OPENED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { OPENED, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
@@ -91,9 +91,6 @@ export function scoreStream(events) {
   };
 }
 
-// open-run.mjs --check's rule for a resolved line; keep the two in step.
-const SKIPPED = /\b(skip|n\/a): *(?!`?<)\S/;
-
 /**
  * Classifies one commit or PR gate: done when the run did it, skipped when its todolist line
  * carries a filled-in reason (checked off or not), claimed when the line is checked off with no
@@ -102,7 +99,7 @@ const SKIPPED = /\b(skip|n\/a): *(?!`?<)\S/;
 export function gate(done, todo, line) {
   if (done) return "done";
   const lines = todo.split("\n").filter((l) => line.test(l));
-  if (lines.some((l) => SKIPPED.test(l))) return "skipped";
+  if (lines.some((l) => RESOLVED.test(l))) return "skipped";
   if (lines.some((l) => /^- \[x\] /i.test(l))) return "claimed";
   return "missing";
 }

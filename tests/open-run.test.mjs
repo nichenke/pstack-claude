@@ -226,6 +226,21 @@ describe("open-run --check", () => {
       expect(run("--check", file)).toEqual({ code: 0, out: expect.stringContaining("0 open") });
     }));
 
+  test("a BLOCKED: line with a reason is resolved, on its own box or appended to a step", () =>
+    withDir((dir) => {
+      const file = join(dir, "todo.md");
+      writeFileSync(file, "- [ ] BLOCKED: independent review\n- [ ] 5. Review the diff. BLOCKED: independent review, no reviewer can run\n");
+      expect(run("--check", file)).toEqual({ code: 0, out: expect.stringContaining("0 open") });
+    }));
+
+  test("a bare, placeholder, lowercase or run-on BLOCKED does not count", () =>
+    withDir((dir) => {
+      const file = join(dir, "todo.md");
+      const lines = ["- [ ] BLOCKED:", "- [ ] 5. Review. BLOCKED:   ", "- [ ] BLOCKED: <reason>", "- [ ] blocked: no reviewer", "- [ ] UNBLOCKED: now"];
+      writeFileSync(file, lines.join("\n") + "\n");
+      expect(run("--check", file).out).toContain(`${lines.length} open`);
+    }));
+
   test("an empty skip reason does not count", () =>
     withDir((dir) => {
       const file = join(dir, "todo.md");
