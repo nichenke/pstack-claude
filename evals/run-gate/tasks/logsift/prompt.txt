@@ -1,0 +1,12 @@
+logsift is turning into our on-call triage tool and it needs to grow up. Here's what I need:
+
+1. The newer services write JSON lines like {"ts": "2026-09-01T12:00:00Z", "level": "info", "service": "api", "msg": "request served"}. Read those alongside the current plain format, mixed in one file, deciding line by line. "ts" can also be epoch seconds as a number. Level names should be case-insensitive in both formats.
+2. Read gzip-compressed files (anything ending in .gz) directly.
+3. Add --since and --until to keep a time window, since inclusive and until exclusive. Each takes an ISO 8601 timestamp or a duration such as 90s, 30m, 2h or 1d counted back from now. A timestamp without an offset is UTC.
+4. Add --min-level to drop records below a level, in the order DEBUG, INFO, WARN, ERROR. WARNING means WARN everywhere, in the logs and on the command line.
+5. Add --by level|service to choose what gets counted. Level stays the default.
+6. Add --format table|json|csv. table is today's output and must stay byte-for-byte the same. json prints one array of {"key": ..., "count": ...} objects, and csv prints a key,count header and then one row per key, both in the same order as the table.
+7. Read defaults for by, format and min_level from a logsift.toml in the current directory, or from the file passed with --config. Flags on the command line win over the file. A --config path that doesn't exist is an error.
+8. Add --strict: when any line fails to parse, still print the summary, then print "<n> unparseable lines" to stderr and exit 1. Without --strict, unparseable lines are skipped like today.
+
+Cover each of these with tests and document the new options in the README.
