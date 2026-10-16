@@ -45,6 +45,17 @@ describe("scoreStream", () => {
     expect(s.result).toEqual({ ok: true, turns: 9, ms: 1000, usd: 1.5 });
   });
 
+  test("an open-run dry run opens no list", () => {
+    const s = scoreStream([
+      init,
+      use("Bash", { command: "node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs --dry-run bug-fix" }),
+      result("# bug-fix\n\n- [ ] 1. Reproduce\n\ndry run, nothing written: 1 steps, 3 PR gates"),
+      done,
+    ]);
+    expect(s.list.kind).toBe(null);
+    expect(s.todoPath).toBe(null);
+  });
+
   test("a list opened only after editing does not count as before the first edit", () => {
     const s = scoreStream([init, use("Edit", { file_path: `${repo}/a.py` }), use("TaskCreate", { subject: "x" }), done]);
     expect(s.list).toEqual({ kind: "task-tool", beforeFirstEdit: false });

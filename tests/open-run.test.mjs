@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const skills = join(import.meta.dir, "../plugins/pstack/skills");
 const mode = join(skills, "poteto-mode");
@@ -196,6 +197,56 @@ describe("open-run --slug", () => {
       expect(run("feature", dir, "--slug").code).toBe(2);
       expect(run("--slg", "x", "feature", dir).code).toBe(2);
       expect(readdirSync(dir)).toEqual([]);
+    }));
+});
+
+describe("open-run --dry-run", () => {
+  test("prints the list a run would open and writes nothing", () =>
+    withDir((dir) => {
+      const work = join(dir, "run");
+      const result = spawnSync("node", [script, "--dry-run", "bug-fix", work], { cwd: dir, encoding: "utf8" });
+      expect(result.status).toBe(0);
+      run("bug-fix", join(dir, "real"));
+      expect(result.stdout).toStartWith(readFileSync(join(dir, "real/todo.md"), "utf8"));
+      expect(result.stdout).toContain("- [ ] Run `/no-comments` before review.");
+      expect(result.stdout).toMatch(/nothing written: \d+ steps, 3 PR gates\n$/);
+      expect(existsSync(work)).toBe(false);
+      expect(readdirSync(dir)).toEqual(["real"]);
+    }));
+
+  test("needs no work dir, and takes a project playbook by path", () =>
+    withDir((dir) => {
+      const playbook = join(dir, "todo.md");
+      writeFileSync(playbook, "---\nextends:\nwhen: Shipping.\n---\n\n1. Tag the release.\n   /tmp/todo.md: 9 steps\n");
+      const result = run("--dry-run", playbook);
+      expect(result.code).toBe(0);
+      expect(result.out).toContain("- [ ] 1. Tag the release.");
+      expect(result.out).toContain("nothing written: 1 steps");
+      expect([...result.out.matchAll(OPENED)]).toEqual([]);
+      expect(readdirSync(dir)).toEqual(["todo.md"]);
+    }));
+
+  test("prints no line the Stop hook reads as an opened list, for any playbook", () =>
+    withDir((dir) => {
+      const names = readdirSync(join(mode, "playbooks")).map((f) => f.replace(/\.md$/, ""));
+      for (const name of ["figure-it-out", ...names]) {
+        const result = run("--dry-run", "--slug", "t", name, dir);
+        expect(result.code).toBe(0);
+        expect([...result.out.matchAll(OPENED)]).toEqual([]);
+      }
+      expect(readdirSync(dir)).toEqual([]);
+    }));
+
+  test("still refuses an extending project playbook, an unknown one, a bad slug, and --check", () =>
+    withDir((dir) => {
+      const playbook = join(dir, "ours.md");
+      writeFileSync(playbook, "---\nextends: bug-fix\nwhen: x\n---\n");
+      expect(run("--dry-run", playbook).code).toBe(2);
+      expect(run("--dry-run", "no-such-playbook").code).toBe(2);
+      expect(run("--dry-run", "--slug", "a/b", "feature").code).toBe(2);
+      expect(run("--dry-run", "--check", playbook).code).toBe(2);
+      expect(run("--dry-run").code).toBe(2);
+      expect(readdirSync(dir)).toEqual(["ours.md"]);
     }));
 });
 
