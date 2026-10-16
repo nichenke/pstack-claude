@@ -31,6 +31,24 @@ bun tools/sync.mjs pstack <new-upstream-sha>
 
 When a clean merge matches the new upstream text and mode, the sync reports it as `updated`. Any existing fork declaration becomes stale in that same run, and removing the declaration does not block the update. A surviving port mode change still counts as a fork even when the text matches upstream.
 
+## Installing from a checkout
+
+To run a branch in Claude Code and Codex, add the checkout or a worktree of it as a local marketplace in each tool, then install `pstack` from it:
+
+```shell
+claude plugin marketplace add <checkout>
+claude plugin install pstack@pstack-claude
+codex plugin marketplace add <checkout>
+codex plugin add pstack@pstack-claude
+```
+
+The GitHub install registers the same `pstack-claude` marketplace name, so remove it first with `claude plugin marketplace remove pstack-claude` and `codex plugin marketplace remove pstack-claude`.
+
+The two tools pick up edits differently:
+
+- Claude Code reads the plugin in place from `<checkout>/plugins/pstack`, so an edit takes effect at the next session start or after `/reload-plugins`. `claude plugin update` reports nothing to update.
+- Codex copies the plugin into `~/.codex/plugins/cache/pstack-claude/pstack/<version>/`, so rerun `codex plugin add pstack@pstack-claude` after each edit and restart Codex. The rerun replaces the cached copy even when `VERSION` is unchanged. `codex plugin marketplace upgrade` refreshes only Git marketplaces and leaves a local one alone.
+
 ## Before you open a PR
 
 Install the root dependencies, then run the generator and the tests:
