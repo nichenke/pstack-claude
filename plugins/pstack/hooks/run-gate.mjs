@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Stop hook: blocks the main session's first stop when the latest todo.md that
+// Stop hook: blocks the main session's first stop when the latest todolist that
 // open-run reported still has a step not checked off or marked skip: or n/a:.
 // A second stop goes through.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { OPENED } from "../skills/poteto-mode/scripts/run-list.mjs";
 
 const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mjs", import.meta.url));
-const OPENED = /^(\/.*?\/todo\.md)(?:: \d+ steps| exists; left as is)/gm;
 
 function resultTexts(entry) {
 	const content = entry?.message?.content;
@@ -48,7 +48,7 @@ if (check.status !== 1) process.exit(0);
 
 process.stderr.write(
 	[
-		`poteto-mode: ${path.basename(path.dirname(todo))}/todo.md still has open steps.`,
+		`poteto-mode: ${path.basename(path.dirname(todo))}/${path.basename(todo)} still has open steps.`,
 		check.stdout.trim(),
 		"Check off each step that is done, do the ones that are not, or keep a line with `skip: <reason>`.",
 		"When a user or harness rule blocks a step, the reason names that rule. Then finish the reply.",

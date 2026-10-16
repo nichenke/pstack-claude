@@ -56,6 +56,26 @@ describe("scoreStream", () => {
     expect(s.todoPath).toBe("/scratch/todo.md");
   });
 
+  test("a slug-named list counts, opened by open-run or written by hand, and neither file is the first edit", () => {
+    const viaScript = scoreStream([
+      init,
+      use("Bash", { command: "node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs --slug t bug-fix .audit" }),
+      result(`${repo}/.audit/t.todo.md: 6 steps, 3 PR gates\n${repo}/.audit/t.tsv: started`),
+      done,
+    ]);
+    expect(viaScript.list.kind).toBe("open-run");
+    expect(viaScript.todoPath).toBe(`${repo}/.audit/t.todo.md`);
+    const byHand = scoreStream([
+      init,
+      use("Write", { file_path: `${repo}/.audit/t.todo.md` }),
+      use("Write", { file_path: `${repo}/.audit/t.tsv` }),
+      use("Edit", { file_path: `${repo}/a.py` }),
+      done,
+    ]);
+    expect(byHand.list).toEqual({ kind: "todo.md", beforeFirstEdit: true });
+    expect(byHand.todoPath).toBe(`${repo}/.audit/t.todo.md`);
+  });
+
   test("a todo file written through a shell redirect counts as a hand-written list", () => {
     const s = scoreStream([
       init,
