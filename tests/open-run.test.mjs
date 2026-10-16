@@ -154,7 +154,62 @@ describe("open-run", () => {
     }));
 });
 
+describe("open-run --slug", () => {
+  test("names the list and trail after the task slug, as show-me-your-work names a shared-checkout trail", () =>
+    withDir((dir) => {
+      const result = run("--slug", "fix-login_2", "bug-fix", dir);
+      expect(result.code).toBe(0);
+      expect(result.out).toContain(`${dir}/fix-login_2.todo.md: `);
+      expect(readdirSync(dir).sort()).toEqual(["fix-login_2.todo.md", "fix-login_2.tsv"]);
+      const header = readFileSync(join(skills, "show-me-your-work/references/decision-log-template.tsv"), "utf8");
+      expect(readFileSync(join(dir, "fix-login_2.tsv"), "utf8")).toBe(header);
+      expect(readFileSync(join(dir, "fix-login_2.todo.md"), "utf8")).toContain("/deslop");
+    }));
+
+  test("takes the flag after the positionals and a one-character slug", () =>
+    withDir((dir) => {
+      expect(run("feature", dir, "--slug=A").code).toBe(0);
+      expect(readdirSync(dir).sort()).toEqual(["A.todo.md", "A.tsv"]);
+    }));
+
+  test("two slugs in one work dir keep separate files, and a rerun leaves its own alone", () =>
+    withDir((dir) => {
+      run("--slug", "one", "feature", dir);
+      writeFileSync(join(dir, "one.todo.md"), "mine\n");
+      run("--slug", "two", "investigation", dir);
+      expect(run("--slug", "one", "feature", dir).out).toContain("one.todo.md exists; left as is");
+      expect(readFileSync(join(dir, "one.todo.md"), "utf8")).toBe("mine\n");
+      expect(readdirSync(dir).sort()).toEqual(["one.todo.md", "one.tsv", "two.todo.md", "two.tsv"]);
+    }));
+
+  for (const slug of ["", "a/b", "..", ".", ".hidden", "a.b", "a b", "a\\b", "_lead", "-lead", "café"]) {
+    test(`rejects the slug ${JSON.stringify(slug)} and writes nothing`, () =>
+      withDir((dir) => {
+        const work = join(dir, "run");
+        expect(run(`--slug=${slug}`, "feature", work).code).toBe(2);
+        expect(existsSync(work)).toBe(false);
+      }));
+  }
+
+  test("rejects a missing slug value and an unknown flag", () =>
+    withDir((dir) => {
+      expect(run("feature", dir, "--slug").code).toBe(2);
+      expect(run("--slg", "x", "feature", dir).code).toBe(2);
+      expect(readdirSync(dir)).toEqual([]);
+    }));
+});
+
 describe("open-run --check", () => {
+  test("checks a slug-named list the same way", () =>
+    withDir((dir) => {
+      run("--slug", "t", "feature", dir);
+      const result = run("--check", join(dir, "t.todo.md"));
+      expect(result.code).toBe(1);
+      expect(result.out).toContain(`${join(dir, "t.todo.md")}:`);
+      writeFileSync(join(dir, "t.todo.md"), "- [x] 1. done\n");
+      expect(run("--check", join(dir, "t.todo.md")).code).toBe(0);
+    }));
+
   test("fails on an open step and names its line", () =>
     withDir((dir) => {
       run("feature", dir);

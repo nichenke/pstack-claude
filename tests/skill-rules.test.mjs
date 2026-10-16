@@ -79,7 +79,7 @@ const rules = [
   {
     source: "#229 parallel sessions keep separate todolists",
     file: "poteto-mode/SKILL.md",
-    phrase: "When several sessions share the checkout, name it `.audit/<task-slug>.todo.md`",
+    phrase: "several sessions may share the checkout, use `.audit` as the work dir and add `--slug <task-slug>`",
   },
   {
     source: "#387 desktop app plan tool is named",
