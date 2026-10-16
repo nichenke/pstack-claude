@@ -66,7 +66,7 @@ function open(playbook, dir) {
 			: path.join(playbooks, `${name}.md`);
 	if (!(project || /^[a-z-]+$/.test(name)) || !fs.existsSync(source)) usage();
 
-	const text = fs.readFileSync(source, "utf8");
+	const text = fs.readFileSync(source, "utf8").replace(/^\uFEFF/, "");
 	const front = project ? (text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] ?? "") : "";
 	const bases = (front.match(/^extends:[ \t]*(.*)$/m)?.[1] ?? "")
 		.split(",")

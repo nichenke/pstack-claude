@@ -131,6 +131,14 @@ describe("open-run", () => {
       expect(existsSync(join(dir, "run/todo.md"))).toBe(false);
     }));
 
+  test("reads the extends line of a project playbook saved with a byte order mark", () =>
+    withDir((dir) => {
+      const playbook = join(dir, "our-bug-fix.md");
+      writeFileSync(playbook, '\uFEFF---\r\nextends: bug-fix\r\nwhen: A bug here.\r\n---\r\n\r\n- **After** "Reproduce" add a step.\r\n');
+      expect(run(playbook, join(dir, "run")).code).toBe(2);
+      expect(existsSync(join(dir, "run/todo.md"))).toBe(false);
+    }));
+
   test("rejects a playbook path that does not exist and writes nothing", () =>
     withDir((dir) => {
       expect(run(join(dir, "missing.md"), dir).code).toBe(2);
