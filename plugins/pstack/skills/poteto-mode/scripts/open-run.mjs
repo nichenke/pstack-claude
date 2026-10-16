@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { runFiles, SLUG } from "./run-list.mjs";
 
 const mode = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const skills = path.dirname(mode);
@@ -17,8 +19,8 @@ const PR_GATES = [
 
 const usage = () => {
 	const names = fs.readdirSync(playbooks).map((f) => f.replace(/\.md$/, ""));
-	console.error("Usage: node open-run.mjs <playbook | path/to/playbook.md> <work-dir>");
-	console.error("       node open-run.mjs --check <todo.md>");
+	console.error("Usage: node open-run.mjs [--slug <task-slug>] <playbook | path/to/playbook.md> <work-dir>");
+	console.error("       node open-run.mjs --check <todo.md | task-slug.todo.md>");
 	console.error(`Playbooks: figure-it-out, ${names.sort().join(", ")}`);
 	process.exit(2);
 };
@@ -55,7 +57,7 @@ function phaseSteps(lines) {
 	return lines.filter((line) => /^## Phase /.test(line)).map((line) => [line.replace(/^## /, "")]);
 }
 
-function open(playbook, dir) {
+function open(playbook, dir, slug) {
 	const project = playbook.endsWith(".md");
 	const name = project ? path.basename(playbook, ".md") : playbook;
 	const figure = !project && name === "figure-it-out";
@@ -73,7 +75,7 @@ function open(playbook, dir) {
 		.map((stem) => stem.trim())
 		.filter(Boolean);
 	if (bases.length) {
-		console.error(`${playbook} extends ${bases.join(", ")}. Open the bundled playbook by name, then apply its changes to todo.md.`);
+		console.error(`${playbook} extends ${bases.join(", ")}. Open the bundled playbook by name, then apply its changes to the todolist.`);
 		process.exit(2);
 	}
 	const lines = outsideFences(text);
@@ -81,8 +83,7 @@ function open(playbook, dir) {
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
 	fs.mkdirSync(dir, { recursive: true });
-	const todo = path.resolve(dir, "todo.md");
-	const trail = path.resolve(dir, "decisions.tsv");
+	const { todo, trail } = runFiles(dir, slug);
 
 	if (fs.existsSync(todo)) {
 		console.log(`${todo} exists; left as is`);
@@ -115,7 +116,21 @@ function check(file) {
 	process.exit(open.length ? 1 : 0);
 }
 
-const [first, second] = process.argv.slice(2);
-if (!first || !second) usage();
-if (first === "--check") check(second);
-else open(first, second);
+let args;
+try {
+	args = parseArgs({ allowPositionals: true, options: { check: { type: "boolean" }, slug: { type: "string" } } });
+} catch {
+	usage();
+}
+const { values, positionals } = args;
+if (values.check) {
+	if (positionals.length !== 1 || values.slug !== undefined) usage();
+	check(positionals[0]);
+} else {
+	if (positionals.length !== 2) usage();
+	if (values.slug !== undefined && !SLUG.test(values.slug)) {
+		console.error(`--slug ${JSON.stringify(values.slug)}: use ASCII letters, digits, - and _, starting with a letter or digit.`);
+		process.exit(2);
+	}
+	open(positionals[0], positionals[1], values.slug);
+}
