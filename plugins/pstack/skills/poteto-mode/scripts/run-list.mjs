@@ -18,6 +18,9 @@ export const OPENED = new RegExp(
 	"gm",
 );
 
+/** A todolist line with a `skip:`, `n/a:` or upstream's `BLOCKED:` reason that is not empty or a `<placeholder>`. */
+export const RESOLVED = /(?:\b(?:skip|n\/a)|\bBLOCKED): *(?!`?<)\S/;
+
 /** The run's todolist and decision trail in `dir`: `todo.md` and `decisions.tsv`, or `<slug>.todo.md` and `<slug>.tsv`. */
 export function runFiles(dir, slug) {
 	return {

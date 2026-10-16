@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Stop hook: blocks the main session's first stop when the latest todolist that
-// open-run reported still has a step not checked off or marked skip: or n/a:.
+// open-run reported still has a step not checked off or marked skip:, n/a: or BLOCKED:.
 // A second stop goes through.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

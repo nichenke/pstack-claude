@@ -91,6 +91,14 @@ describe("run-gate Stop hook", () => {
       expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(0);
     }));
 
+  test("lets the stop through when the only open box is BLOCKED with a reason", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", "- [x] 1. done\n- [ ] BLOCKED: independent review\n");
+      expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(0);
+      writeFileSync(file, "- [x] 1. done\n- [ ] BLOCKED:\n");
+      expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(2);
+    }));
+
   test("recognizes a rerun that left the list in place", () =>
     withDir((dir) => {
       const file = todo(dir, "todo.md", "- [ ] 1. open\n");

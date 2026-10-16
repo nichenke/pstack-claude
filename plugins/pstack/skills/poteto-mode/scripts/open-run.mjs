@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { runFiles, SLUG } from "./run-list.mjs";
+import { RESOLVED, runFiles, SLUG } from "./run-list.mjs";
 
 const mode = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const skills = path.dirname(mode);
@@ -108,7 +108,7 @@ function check(file) {
 		.split(/\r?\n/)
 		.forEach((line, i) => {
 			if (!line.startsWith("- [ ] ")) return;
-			if (/\b(skip|n\/a): *(?!`?<)\S/.test(line)) return;
+			if (RESOLVED.test(line)) return;
 			open.push(`${file}:${i + 1}: ${line.slice(6)}`);
 		});
 	for (const line of open) console.log(line);
