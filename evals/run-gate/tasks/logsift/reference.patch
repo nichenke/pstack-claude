@@ -1,0 +1,318 @@
+diff --git a/README.md b/README.md
+index 4b811e3..b86c27e 100644
+--- a/README.md
++++ b/README.md
+@@ -1,12 +1,23 @@
+ # logsift
+ 
+-Counts log records by level.
++Counts log records by level or service.
+ 
+ ```sh
+-python3 -m logsift app.log other.log
+-cat app.log | python3 -m logsift
++python3 -m logsift app.log other.log.gz
++cat app.log | python3 -m logsift --since 2h --min-level warn --by service --format json
+ ```
+ 
+-Each input line looks like `2026-09-01T12:00:00Z INFO api: request served`. Lines that do not parse are skipped. The output is one `LEVEL COUNT` line per level, most frequent first, ties broken by level name.
++An input line is either plain, `2026-09-01T12:00:00Z INFO api: request served`, or a JSON object with `ts`, `level`, `service` and `msg`, where `ts` is ISO 8601 or epoch seconds. Level names are case-insensitive and `WARNING` means `WARN`. Lines that do not parse are skipped. Files ending in `.gz` are read as gzip.
++
++| Option | Meaning |
++| --- | --- |
++| `--since T`, `--until T` | keep records in `[since, until)`; `T` is ISO 8601 (UTC without an offset) or a duration such as `90s`, `30m`, `2h`, `1d` before now |
++| `--min-level L` | drop records below `L` in the order DEBUG, INFO, WARN, ERROR |
++| `--by level\|service` | what to count; default `level` |
++| `--format table\|json\|csv` | `table` prints `KEY COUNT` lines, most frequent first, ties by key; `json` prints `[{"key": ..., "count": ...}]`; `csv` prints a `key,count` header and rows, in the same order |
++| `--config PATH` | read defaults from `PATH` instead of `./logsift.toml` |
++| `--strict` | after the summary, print `<n> unparseable lines` to stderr and exit 1 when any line fails to parse |
++
++`logsift.toml` sets defaults for `by`, `format` and `min_level`. Command-line flags win.
+ 
+ Run the tests with `python3 -m unittest discover -s tests -t .`.
+diff --git a/logsift/__init__.py b/logsift/__init__.py
+index 0184e94..2a2b31b 100644
+--- a/logsift/__init__.py
++++ b/logsift/__init__.py
+@@ -1,5 +1,5 @@
+-"""Summarize service logs by level."""
++"""Summarize service logs by level or service."""
+ from logsift.parse import Record, parse_line
+-from logsift.summarize import count_by_level
++from logsift.summarize import count_by, count_by_level
+ 
+-__all__ = ["Record", "parse_line", "count_by_level"]
++__all__ = ["Record", "parse_line", "count_by", "count_by_level"]
+diff --git a/logsift/cli.py b/logsift/cli.py
+index 74d4fd3..e0131bb 100644
+--- a/logsift/cli.py
++++ b/logsift/cli.py
+@@ -1,25 +1,64 @@
+ import argparse
++import gzip
+ import sys
+ 
++from logsift.config import ConfigError, load_config
++from logsift.filters import keep, parse_bound, parse_level
++from logsift.output import FORMATS, render
+ from logsift.parse import parse_line
+-from logsift.summarize import count_by_level
++from logsift.summarize import FIELDS, count_by
+ 
+ 
+ def read_lines(names):
+     for name in names:
+         if name == "-":
+             yield from sys.stdin
++        elif name.endswith(".gz"):
++            with gzip.open(name, "rt", encoding="utf-8") as handle:
++                yield from handle
+         else:
+             with open(name, encoding="utf-8") as handle:
+                 yield from handle
+ 
+ 
++def build_parser():
++    parser = argparse.ArgumentParser(prog="logsift", description="Count log records by level or service.")
++    parser.add_argument("files", nargs="*", help="log files to read, .gz included; standard input when none or '-'")
++    parser.add_argument("--since", type=parse_bound, help="keep records at or after this timestamp or duration ago")
++    parser.add_argument("--until", type=parse_bound, help="keep records before this timestamp or duration ago")
++    parser.add_argument("--min-level", type=parse_level, help="drop records below this level")
++    parser.add_argument("--by", choices=FIELDS, help="what to count (default: level)")
++    parser.add_argument("--format", choices=FORMATS, help="output format (default: table)")
++    parser.add_argument("--config", help="read defaults from this TOML file instead of ./logsift.toml")
++    parser.add_argument("--strict", action="store_true", help="exit 1 when any line fails to parse")
++    return parser
++
++
+ def main(argv=None):
+-    parser = argparse.ArgumentParser(prog="logsift", description="Count log records by level.")
+-    parser.add_argument("files", nargs="*", help="log files to read; standard input when none or '-'")
++    parser = build_parser()
+     args = parser.parse_args(argv)
++    try:
++        config = load_config(args.config)
++        by = args.by or config.get("by", "level")
++        fmt = args.format or config.get("format", "table")
++        min_level = args.min_level or (parse_level(config["min_level"]) if "min_level" in config else None)
++    except (ConfigError, ValueError) as error:
++        parser.error(str(error))
++    if by not in FIELDS:
++        parser.error(f"config: by must be one of {', '.join(FIELDS)}")
++    if fmt not in FORMATS:
++        parser.error(f"config: format must be one of {', '.join(FORMATS)}")
++
++    records, unparseable = [], 0
++    for line in read_lines(args.files or ["-"]):
++        record = parse_line(line)
++        if record is None:
++            unparseable += 1
++        elif keep(record, args.since, args.until, min_level):
++            records.append(record)
+ 
+-    records = [record for record in map(parse_line, read_lines(args.files or ["-"])) if record]
+-    for level, count in count_by_level(records):
+-        print(f"{level} {count}")
++    sys.stdout.write(render(count_by(records, by), fmt))
++    if args.strict and unparseable:
++        print(f"{unparseable} unparseable lines", file=sys.stderr)
++        return 1
+     return 0
+diff --git a/logsift/config.py b/logsift/config.py
+new file mode 100644
+index 0000000..39be44d
+--- /dev/null
++++ b/logsift/config.py
+@@ -0,0 +1,30 @@
++import tomllib
++from pathlib import Path
++
++DEFAULT_NAME = "logsift.toml"
++KEYS = ("by", "format", "min_level")
++
++
++class ConfigError(Exception):
++    pass
++
++
++def load_config(path=None):
++    """Defaults from the TOML file at `path`, or from ./logsift.toml when `path` is None.
++
++    A missing ./logsift.toml gives {}; a missing explicit `path`, bad TOML, or an unknown key raises ConfigError.
++    """
++    explicit = path is not None
++    path = Path(path) if explicit else Path(DEFAULT_NAME)
++    if not path.is_file():
++        if explicit:
++            raise ConfigError(f"config file {path} does not exist")
++        return {}
++    try:
++        data = tomllib.loads(path.read_text(encoding="utf-8"))
++    except tomllib.TOMLDecodeError as error:
++        raise ConfigError(f"{path}: {error}") from error
++    unknown = sorted(set(data) - set(KEYS))
++    if unknown:
++        raise ConfigError(f"{path}: unknown keys {', '.join(unknown)}")
++    return data
+diff --git a/logsift/filters.py b/logsift/filters.py
+new file mode 100644
+index 0000000..503e423
+--- /dev/null
++++ b/logsift/filters.py
+@@ -0,0 +1,36 @@
++import re
++from datetime import datetime, timedelta, timezone
++
++from logsift.parse import LEVELS, normalize_level, parse_timestamp
++
++DURATION = re.compile(r"^(\d+)([smhd])$")
++UNITS = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
++
++
++def parse_bound(text, now=None):
++    """An ISO 8601 timestamp, or a duration such as 30m counted back from `now`, as an aware datetime.
++
++    Raises ValueError for anything else.
++    """
++    match = DURATION.match(text)
++    if match:
++        now = now or datetime.now(timezone.utc)
++        return now - timedelta(**{UNITS[match[2]]: int(match[1])})
++    return parse_timestamp(text)
++
++
++def parse_level(text):
++    """The canonical level for `text`; raises ValueError when it names none."""
++    level = normalize_level(text)
++    if level is None:
++        raise ValueError(f"unknown level {text!r}; expected one of {', '.join(LEVELS)}")
++    return level
++
++
++def keep(record, since=None, until=None, min_level=None):
++    """Whether `record` falls in [since, until) and is at or above `min_level`."""
++    if since is not None and record.timestamp < since:
++        return False
++    if until is not None and record.timestamp >= until:
++        return False
++    return min_level is None or LEVELS.index(record.level) >= LEVELS.index(min_level)
+diff --git a/logsift/output.py b/logsift/output.py
+new file mode 100644
+index 0000000..502c5be
+--- /dev/null
++++ b/logsift/output.py
+@@ -0,0 +1,18 @@
++import csv
++import io
++import json
++
++FORMATS = ("table", "json", "csv")
++
++
++def render(counts, fmt="table"):
++    """The text for (key, count) pairs in `fmt`, ending in a newline unless it is an empty table."""
++    if fmt == "json":
++        return json.dumps([{"key": key, "count": count} for key, count in counts]) + "\n"
++    if fmt == "csv":
++        buffer = io.StringIO()
++        writer = csv.writer(buffer, lineterminator="\n")
++        writer.writerow(["key", "count"])
++        writer.writerows(counts)
++        return buffer.getvalue()
++    return "".join(f"{key} {count}\n" for key, count in counts)
+diff --git a/logsift/parse.py b/logsift/parse.py
+index d6c507b..ecb0453 100644
+--- a/logsift/parse.py
++++ b/logsift/parse.py
+@@ -1,11 +1,13 @@
+-"""Parse plain log lines of the form `<timestamp> <LEVEL> <service>: <message>`."""
++"""Parse log lines in the plain `<timestamp> <LEVEL> <service>: <message>` format or as JSON objects."""
++import json
+ import re
+ from dataclasses import dataclass
+ from datetime import datetime, timezone
+ 
+ LEVELS = ("DEBUG", "INFO", "WARN", "ERROR")
++ALIASES = {"WARNING": "WARN"}
+ 
+-PLAIN = re.compile(r"^(?P<ts>\S+)\s+(?P<level>[A-Z]+)\s+(?P<service>[\w.-]+):\s?(?P<message>.*)$")
++PLAIN = re.compile(r"^(?P<ts>\S+)\s+(?P<level>[A-Za-z]+)\s+(?P<service>[\w.-]+):\s?(?P<message>.*)$")
+ 
+ 
+ @dataclass(frozen=True)
+@@ -16,6 +18,12 @@ class Record:
+     message: str
+ 
+ 
++def normalize_level(name):
++    """The canonical level for `name`, case-insensitive with WARNING as WARN, or None when unknown."""
++    level = ALIASES.get(name.upper(), name.upper())
++    return level if level in LEVELS else None
++
++
+ def parse_timestamp(text):
+     """An ISO 8601 timestamp as an aware datetime; one without an offset is taken as UTC."""
+     stamp = datetime.fromisoformat(text)
+@@ -24,13 +32,34 @@ def parse_timestamp(text):
+     return stamp
+ 
+ 
+-def parse_line(line):
+-    """The Record for one plain log line, or None when the line does not parse."""
+-    match = PLAIN.match(line.rstrip("\n"))
+-    if not match or match["level"] not in LEVELS:
++def _record(ts, level, service, message):
++    level = normalize_level(level) if isinstance(level, str) else None
++    if level is None or not isinstance(service, str):
+         return None
+     try:
+-        timestamp = parse_timestamp(match["ts"])
+-    except ValueError:
++        if isinstance(ts, (int, float)) and not isinstance(ts, bool):
++            timestamp = datetime.fromtimestamp(ts, timezone.utc)
++        elif isinstance(ts, str):
++            timestamp = parse_timestamp(ts)
++        else:
++            return None
++    except (ValueError, OverflowError, OSError):
++        return None
++    return Record(timestamp, level, service, message if isinstance(message, str) else "")
++
++
++def parse_line(line):
++    """The Record for one plain or JSON log line, or None when the line does not parse."""
++    line = line.rstrip("\n")
++    if line.lstrip().startswith("{"):
++        try:
++            data = json.loads(line)
++        except ValueError:
++            return None
++        if not isinstance(data, dict):
++            return None
++        return _record(data.get("ts"), data.get("level"), data.get("service"), data.get("msg"))
++    match = PLAIN.match(line)
++    if not match:
+         return None
+-    return Record(timestamp, match["level"], match["service"], match["message"])
++    return _record(match["ts"], match["level"], match["service"], match["message"])
+diff --git a/logsift/summarize.py b/logsift/summarize.py
+index 0c8c81f..b912157 100644
+--- a/logsift/summarize.py
++++ b/logsift/summarize.py
+@@ -1,7 +1,13 @@
+ from collections import Counter
+ 
++FIELDS = ("level", "service")
+ 
+-def count_by_level(records):
+-    """(level, count) pairs, most frequent first, ties broken by level name."""
+-    counts = Counter(record.level for record in records)
++
++def count_by(records, field="level"):
++    """(key, count) pairs for `field`, most frequent first, ties broken by key."""
++    counts = Counter(getattr(record, field) for record in records)
+     return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
++
++
++def count_by_level(records):
++    return count_by(records, "level")
