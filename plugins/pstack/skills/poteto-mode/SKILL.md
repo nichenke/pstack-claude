@@ -138,7 +138,7 @@ Comments follow the same rule as the reply. Write them clean as you go. Keep a c
 
 ## Playbooks
 
-**Start the run** opens the todolist from the matched playbook's file, `playbooks/<title>.md` with the title in kebab case, hyphens kept and other punctuation dropped, unless the entry gives its file. Add task-specific todos after its steps.
+**Start the run** opens the todolist from the matched playbook's file, `playbooks/<title>.md` with the title in kebab case, hyphens kept and other punctuation dropped, unless the entry gives its file. Add task-specific todos after its steps. To preview a playbook's list without opening a run, pass `--dry-run` to `open-run.mjs`, which writes nothing.
 
 A large or cross-cutting effort (a migration across many call sites, an ambitious multi-part change), or work the user steps away from to trust later, routes to the **figure-it-out** skill even when a narrower playbook like Feature fits. Use **figure-it-out** whenever no bundled playbook fits. It designs a bespoke, rigorous playbook for the task. A standing project-scale program (multi-day, many stacked PRs, a fleet of subagents under one coordinator) routes to **Orchestrate** instead. figure-it-out designs one bespoke run, orchestrate runs the program.
 

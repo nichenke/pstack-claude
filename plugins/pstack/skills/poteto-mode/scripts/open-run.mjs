@@ -20,6 +20,7 @@ const PR_GATES = [
 const usage = () => {
 	const names = fs.readdirSync(playbooks).map((f) => f.replace(/\.md$/, ""));
 	console.error("Usage: node open-run.mjs [--slug <task-slug>] <playbook | path/to/playbook.md> <work-dir>");
+	console.error("       node open-run.mjs --dry-run <playbook | path/to/playbook.md> [work-dir]");
 	console.error("       node open-run.mjs --check <todo.md | task-slug.todo.md>");
 	console.error(`Playbooks: figure-it-out, ${names.sort().join(", ")}`);
 	process.exit(2);
@@ -57,7 +58,7 @@ function phaseSteps(lines) {
 	return lines.filter((line) => /^## Phase /.test(line)).map((line) => [line.replace(/^## /, "")]);
 }
 
-function open(playbook, dir, slug) {
+function open(playbook, dir, slug, dryRun) {
 	const project = playbook.endsWith(".md");
 	const name = project ? path.basename(playbook, ".md") : playbook;
 	const figure = !project && name === "figure-it-out";
@@ -82,17 +83,24 @@ function open(playbook, dir, slug) {
 	const steps = figure ? phaseSteps(lines) : numberedSteps(lines);
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
+	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
+	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
+	if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
+	const counts = `${steps.length} steps${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`;
+
+	if (dryRun) {
+		console.log(`${body.join("\n")}\n\ndry run, nothing written: ${counts}`);
+		return;
+	}
+
 	fs.mkdirSync(dir, { recursive: true });
 	const { todo, trail } = runFiles(dir, slug);
 
 	if (fs.existsSync(todo)) {
 		console.log(`${todo} exists; left as is`);
 	} else {
-		const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
-		for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
-		if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
 		fs.writeFileSync(todo, body.join("\n") + "\n");
-		console.log(`${todo}: ${steps.length} steps${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`);
+		console.log(`${todo}: ${counts}`);
 	}
 
 	if (fs.existsSync(trail)) console.log(`${trail} exists; left as is`);
@@ -118,19 +126,20 @@ function check(file) {
 
 let args;
 try {
-	args = parseArgs({ allowPositionals: true, options: { check: { type: "boolean" }, slug: { type: "string" } } });
+	args = parseArgs({ allowPositionals: true, options: { check: { type: "boolean" }, "dry-run": { type: "boolean" }, slug: { type: "string" } } });
 } catch {
 	usage();
 }
 const { values, positionals } = args;
 if (values.check) {
-	if (positionals.length !== 1 || values.slug !== undefined) usage();
+	if (positionals.length !== 1 || values.slug !== undefined || values["dry-run"]) usage();
 	check(positionals[0]);
 } else {
-	if (positionals.length !== 2) usage();
+	const dryRun = Boolean(values["dry-run"]);
+	if (positionals.length !== 2 && !(dryRun && positionals.length === 1)) usage();
 	if (values.slug !== undefined && !SLUG.test(values.slug)) {
 		console.error(`--slug ${JSON.stringify(values.slug)}: use ASCII letters, digits, - and _, starting with a letter or digit.`);
 		process.exit(2);
 	}
-	open(positionals[0], positionals[1], values.slug);
+	open(positionals[0], positionals[1], values.slug, dryRun);
 }

@@ -64,7 +64,7 @@ export function scoreStream(events) {
       const file = String(input.file_path ?? "");
       if (/open-run\.mjs\b/.test(command) && /--check\b/.test(command)) checkRan = true;
       let kind = null;
-      if (/open-run\.mjs\b/.test(command) && !/--check\b/.test(command)) kind = "open-run";
+      if (/open-run\.mjs\b/.test(command) && !/--(check|dry-run)\b/.test(command)) kind = "open-run";
       else if (block.name === "TaskCreate" || block.name === "TodoWrite") kind = "task-tool";
       else if (block.name === "Write" && TODO_FILE.test(file)) kind = "todo.md";
       for (const match of command.matchAll(TODO_REDIRECT)) {

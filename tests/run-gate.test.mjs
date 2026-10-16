@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 const pluginRoot = fileURLToPath(new URL("../plugins/pstack/", import.meta.url));
 const stop = JSON.parse(readFileSync(join(pluginRoot, "hooks/hooks.json"), "utf8")).hooks.Stop[0];
 const command = stop.hooks[0].command;
+const openRun = join(pluginRoot, "skills/poteto-mode/scripts/open-run.mjs");
+const openRunOut = (...args) => spawnSync("node", [openRun, ...args], { encoding: "utf8" }).stdout;
 
 function withDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), "pstack-run-gate-"));
@@ -97,6 +99,15 @@ describe("run-gate Stop hook", () => {
       expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(0);
       writeFileSync(file, "- [x] 1. done\n- [ ] BLOCKED:\n");
       expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(2);
+    }));
+
+  test("stays silent after a dry run, and a later dry run does not hide a real run's open list", () =>
+    withDir((dir) => {
+      const preview = openRunOut("--dry-run", "bug-fix", dir);
+      expect(preview).toContain("- [ ] ");
+      expect(runHook(dir, [bashResult(preview)])).toEqual({ status: 0, out: "", err: "" });
+      const real = openRunOut("bug-fix", join(dir, "real"));
+      expect(runHook(dir, [bashResult(real), bashResult(openRunOut("--dry-run", "feature"))]).status).toBe(2);
     }));
 
   test("recognizes a rerun that left the list in place", () =>
