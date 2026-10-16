@@ -10,8 +10,8 @@ batch=${1:?batch dir} task=${2:?task} arm=${3:?arm} rep=${4:?rep}
 here=$(cd "$(dirname "$0")" && pwd)
 work_root=${WORK_ROOT:-$HOME/src/workbench}
 model=${MODEL:-opus}
-budget=${BUDGET_USD:-10}
-minutes=${RUN_MINUTES:-45}
+settings=$("$here/task-settings.sh" "$here/tasks/$task")
+read -r minutes budget <<<"$settings"
 
 plugin=$(awk -v a="$arm" '$1 == a { print $3 }' "$batch/arms.tsv")
 [[ -n $plugin ]] || { echo "run-one: no arm $arm in $batch/arms.tsv" >&2; exit 2; }
@@ -26,8 +26,9 @@ git -C "$repo" add -A
 GIT_AUTHOR_DATE=2026-09-01T12:00:00Z GIT_COMMITTER_DATE=2026-09-01T12:00:00Z \
   git -C "$repo" -c user.name=dev -c user.email=dev@example.com commit -q -m "Initial import"
 
-jq -n --arg task "$task" --arg arm "$arm" --argjson rep "$rep" --arg repo "$repo" \
-  --arg plugin "$plugin" --arg model "$model" '{task: $task, arm: $arm, rep: $rep, repo: $repo, plugin: $plugin, model: $model}' \
+jq -n --arg task "$task" --arg arm "$arm" --argjson rep "$rep" --arg repo "$repo" --arg plugin "$plugin" \
+  --arg model "$model" --argjson minutes "$minutes" --argjson budget "$budget" \
+  '{task: $task, arm: $arm, rep: $rep, repo: $repo, plugin: $plugin, model: $model, minutes: $minutes, budget: $budget}' \
   >"$run_dir/meta.json"
 
 prompt="/pstack:poteto-mode $(cat "$here/tasks/$task/prompt.txt")"
