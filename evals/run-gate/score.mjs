@@ -22,8 +22,9 @@ function resultText(block) {
 
 /**
  * Scores the parsed stream-json lines of one `claude -p` run.
- * Main-thread events (parent_tool_use_id null) decide when the list opened and the first edit;
- * skills and shell commands count from any thread, since a subagent can run a gate for the parent.
+ * Main-thread events (parent_tool_use_id null) decide when the list opened, the first edit, and
+ * the native task list (TaskCreate and TaskUpdate, or the last TodoWrite); skills and shell commands
+ * count from any thread, since a subagent can run a gate for the parent.
  */
 export function scoreStream(events) {
   let index = 0;
@@ -33,6 +34,12 @@ export function scoreStream(events) {
   let checkRan = false;
   let gateBlocks = 0;
   let plugin = null;
+  let playbook = null;
+  let taskTools = false;
+  let todos = null;
+  let created = 0;
+  const creates = new Set();
+  const tasks = new Map();
   let result = { ok: false, turns: null, ms: null, usd: null };
   const skills = [];
   const commands = [];
@@ -41,9 +48,11 @@ export function scoreStream(events) {
   for (const event of events) {
     if (event.type === "system" && event.subtype === "init") {
       plugin = (event.plugins ?? []).find((p) => p.name === "pstack")?.path ?? null;
+      taskTools = (event.tools ?? []).some((tool) => tool === "TaskCreate" || tool === "TodoWrite");
     }
     if (event.type === "system" && event.subtype === "hook_response" && event.hook_event === "Stop") {
-      if (event.exit_code === 2 && String(event.output ?? "").includes("still has open steps")) gateBlocks++;
+      const said = [event.output, event.stderr, event.stdout].map((text) => String(text ?? "")).join("\n");
+      if (event.exit_code === 2 && said.includes("still has open steps")) gateBlocks++;
     }
     if (event.type === "result") {
       result = { ok: !event.is_error, turns: event.num_turns, ms: event.duration_ms, usd: event.total_cost_usd };
@@ -52,6 +61,10 @@ export function scoreStream(events) {
     for (const block of event.message?.content ?? []) {
       if (event.type === "user" && block.type === "tool_result" && main) {
         for (const match of resultText(block).matchAll(OPENED)) todoPath = match[1];
+        if (creates.delete(block.tool_use_id)) {
+          created++;
+          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? String(created), "pending");
+        }
       }
       if (event.type !== "assistant" || block.type !== "tool_use") continue;
       index++;
@@ -71,12 +84,22 @@ export function scoreStream(events) {
         todoHints.push(match[1]);
         kind ??= "todo.md";
       }
-      if (kind && !list) list = { kind, at: index };
+      if (kind && !list) {
+        list = { kind, at: index };
+        if (kind === "open-run") playbook = command.match(/open-run\.mjs\s+(?:--slug\s+\S+\s+)?["']?([^\s"']+)/)?.[1] ?? null;
+      }
+      if (block.name === "TaskCreate") creates.add(block.id);
+      if (block.name === "TaskUpdate" && input.taskId != null && input.status) {
+        if (input.status === "deleted") tasks.delete(String(input.taskId));
+        else if (tasks.has(String(input.taskId))) tasks.set(String(input.taskId), input.status);
+      }
+      if (block.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
       if (block.name === "Write" && TODO_FILE.test(file) && !todoPath) todoPath = file;
       if (EDITS.has(block.name) && !RUN_FILE.test(file) && firstEdit === null) firstEdit = index;
     }
   }
 
+  const statuses = [...tasks.values(), ...(todos ?? []).map((todo) => todo?.status)];
   return {
     list: { kind: list?.kind ?? null, beforeFirstEdit: Boolean(list) && (firstEdit === null || list.at < firstEdit) },
     firstEditSeen: firstEdit !== null,
@@ -84,6 +107,9 @@ export function scoreStream(events) {
     todoHints,
     checkRan,
     gateBlocks,
+    playbook: playbook && path.basename(playbook, ".md"),
+    taskTools,
+    taskList: statuses.length ? { total: statuses.length, open: statuses.filter((status) => status !== "completed").length } : null,
     skills,
     commands,
     plugin,
@@ -202,6 +228,9 @@ function scoreRun(runDir) {
     openSteps,
     checkRan: s.checkRan,
     gateBlocks: s.gateBlocks,
+    playbook: s.playbook,
+    taskTools: s.taskTools,
+    taskList: s.taskList,
     decisionRows,
     tree: tree.path,
     commits: tree.commits,

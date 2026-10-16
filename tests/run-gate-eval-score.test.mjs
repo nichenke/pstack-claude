@@ -124,6 +124,60 @@ describe("scoreStream", () => {
     expect(scoreStream([init, stop(2, "lint failed"), done]).gateBlocks).toBe(0);
   });
 
+  test("a gate block reported only on the hook's stderr still counts", () => {
+    const blocked = { ...stop(2, ""), stderr: "poteto-mode: scratch/todo.md still has open steps.\n" };
+    expect(scoreStream([init, blocked, done]).gateBlocks).toBe(1);
+  });
+
+  test("a native task list counts each created task open until an update completes it", () => {
+    const s = scoreStream([
+      { ...init, tools: ["Bash", "TaskCreate", "TaskUpdate"] },
+      use("TaskCreate", { subject: "1. Reproduce" }),
+      result("Task #1 created successfully: 1. Reproduce"),
+      use("TaskCreate", { subject: "2. Fix" }),
+      result("Task #2 created successfully: 2. Fix"),
+      use("TaskCreate", { subject: "3. Drop me" }),
+      result("Task #3 created successfully: 3. Drop me"),
+      use("TaskUpdate", { taskId: "1", status: "completed" }),
+      use("TaskUpdate", { taskId: "2", status: "in_progress" }),
+      use("TaskUpdate", { taskId: "3", status: "deleted" }),
+      use("TaskUpdate", { taskId: "9", status: "completed" }),
+      done,
+    ]);
+    expect(s.taskTools).toBe(true);
+    expect(s.list.kind).toBe("task-tool");
+    expect(s.taskList).toEqual({ total: 2, open: 1 });
+  });
+
+  test("the last TodoWrite is the task list, and an empty one is no list", () => {
+    const todo = (...statuses) => use("TodoWrite", { todos: statuses.map((status, i) => ({ content: `${i}`, status })) });
+    expect(scoreStream([init, todo("pending", "pending"), todo("completed", "in_progress"), done]).taskList).toEqual({ total: 2, open: 1 });
+    expect(scoreStream([init, todo("pending"), todo("completed"), done]).taskList).toEqual({ total: 1, open: 0 });
+    expect(scoreStream([init, todo(), done]).taskList).toBe(null);
+  });
+
+  test("a subagent's task list is not the run's, and a session without task tools says so", () => {
+    const s = scoreStream([
+      init,
+      use("Agent", { prompt: "go" }),
+      use("TaskCreate", { subject: "sub" }, "t1"),
+      result("Task #1 created successfully: sub", "t1"),
+      use("TodoWrite", { todos: [{ content: "sub", status: "pending" }] }, "t1"),
+      done,
+    ]);
+    expect(s.taskList).toBe(null);
+    expect(s.taskTools).toBe(false);
+  });
+
+  test("the playbook comes from the open-run call that opened the list", () => {
+    const opened = (command) =>
+      scoreStream([init, use("Bash", { command: `node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs ${command}` }), done]).playbook;
+    expect(opened("feature /scratch")).toBe("feature");
+    expect(opened("--slug logs figure-it-out .audit")).toBe("figure-it-out");
+    expect(opened("'.agents/playbooks/ship-it.md' /scratch")).toBe("ship-it");
+    expect(scoreStream([init, use("Write", { file_path: "/scratch/todo.md" }), done]).playbook).toBe(null);
+  });
+
   test("a run with no result line reports not ok", () => {
     expect(scoreStream([init]).result).toEqual({ ok: false, turns: null, ms: null, usd: null });
   });
