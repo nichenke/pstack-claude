@@ -7,13 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { OPENED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
-// Same pattern run-gate.mjs reads, so the scorer and the hook agree on which list a run opened.
-const OPENED = /^(\/.*?\/todo\.md)(?:: \d+ steps| exists; left as is)/gm;
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-const LIST_FILES = /\/(todo\.md|decisions\.tsv)$/;
 // A shell redirect into a *todo*.md file; `2>&1` and plain reads don't match.
 const TODO_REDIRECT = /(?:^|[^>2&])>{1,2}\s*["']?([^\s"'|;&<>]*todo[^\s"'|;&<>]*\.md)\b/gi;
 
@@ -68,14 +66,14 @@ export function scoreStream(events) {
       let kind = null;
       if (/open-run\.mjs\b/.test(command) && !/--check\b/.test(command)) kind = "open-run";
       else if (block.name === "TaskCreate" || block.name === "TodoWrite") kind = "task-tool";
-      else if (block.name === "Write" && file.endsWith("/todo.md")) kind = "todo.md";
+      else if (block.name === "Write" && TODO_FILE.test(file)) kind = "todo.md";
       for (const match of command.matchAll(TODO_REDIRECT)) {
         todoHints.push(match[1]);
         kind ??= "todo.md";
       }
       if (kind && !list) list = { kind, at: index };
-      if (block.name === "Write" && file.endsWith("/todo.md") && !todoPath) todoPath = file;
-      if (EDITS.has(block.name) && !LIST_FILES.test(file) && firstEdit === null) firstEdit = index;
+      if (block.name === "Write" && TODO_FILE.test(file) && !todoPath) todoPath = file;
+      if (EDITS.has(block.name) && !RUN_FILE.test(file) && firstEdit === null) firstEdit = index;
     }
   }
 
@@ -181,7 +179,7 @@ function scoreRun(runDir) {
       .findLast((file) => fs.existsSync(file));
   if (!fs.existsSync(kept) && found && fs.existsSync(found)) {
     fs.copyFileSync(found, kept);
-    const sibling = path.join(path.dirname(found), "decisions.tsv");
+    const sibling = trailBeside(found);
     if (fs.existsSync(sibling)) fs.copyFileSync(sibling, trail);
   }
   const todo = fs.existsSync(kept) ? fs.readFileSync(kept, "utf8") : "";

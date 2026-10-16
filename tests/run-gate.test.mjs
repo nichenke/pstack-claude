@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const pluginRoot = fileURLToPath(new URL("../plugins/pstack/", import.meta.url));
@@ -61,6 +61,28 @@ describe("run-gate Stop hook", () => {
       expect(r.status).toBe(2);
       expect(r.err).toContain(`${file}:2: 2. Run \`/deslop\` over the diff before commit.`);
       expect(r.err).toContain("skip: <reason>");
+    }));
+
+  test("names the list it blocked on by its own file name", () =>
+    withDir((dir) => {
+      const plain = todo(dir, "todo.md", "- [ ] 1. open\n");
+      expect(runHook(dir, [bashResult(`${plain}: 1 steps`)]).err).toContain(`${basename(dir)}/todo.md still has open steps`);
+    }));
+
+  test("blocks on a slug-named list in a shared checkout's .audit", () =>
+    withDir((dir) => {
+      mkdirSync(join(dir, ".audit"));
+      const file = todo(dir, ".audit/fix-login.todo.md", "- [x] 1. done\n- [ ] 2. open\n");
+      const r = runHook(dir, [bashResult(`${file}: 2 steps\n${dir}/.audit/fix-login.tsv: started`)]);
+      expect(r.status).toBe(2);
+      expect(r.err).toContain(".audit/fix-login.todo.md still has open steps.");
+      expect(r.err).toContain(`${file}:2: 2. open`);
+    }));
+
+  test("stays out of a markdown file that only ends in todo.md", () =>
+    withDir((dir) => {
+      const file = todo(dir, "mytodo.md", "- [ ] 1. open\n");
+      expect(runHook(dir, [bashResult(`${file}: 1 steps`)]).status).toBe(0);
     }));
 
   test("lets the stop through when every step is done or skipped", () =>
