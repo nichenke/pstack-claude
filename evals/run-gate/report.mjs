@@ -12,12 +12,20 @@ const scores = fs
   .filter((file) => fs.existsSync(file))
   .map((file) => JSON.parse(fs.readFileSync(file, "utf8")));
 
-const arms = ["upstream", "prose", "hook"];
+const arms = ["upstream", "prose", "hook"].filter((arm) => scores.some((s) => s.arm === arm));
+const tasks = [...new Set(scores.map((s) => s.task))].sort();
 const rate = (rows, pick) => `${rows.filter(pick).length}/${rows.length}`;
 const mean = (rows, pick) => {
   const values = rows.map(pick).filter((v) => typeof v === "number" && !Number.isNaN(v));
   return values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1) : "-";
 };
+const counts = (rows, pick) => {
+  const seen = Object.entries(Object.groupBy(rows.map(pick).filter(Boolean), (v) => v));
+  return seen.length ? seen.map(([k, v]) => `${k} ${v.length}`).sort().join(", ") : "-";
+};
+const kept = (s) => s.taskList?.total > 0;
+const resolved = (s) => (s.todoKept || kept(s)) && (!s.todoKept || s.openSteps === 0) && (!kept(s) || s.taskList.open === 0);
+const minutes = (s) => (s.ms ?? s.seconds * 1000) / 60000;
 const gates = (rows, key) =>
   ["done", "skipped", "claimed", "missing"].map((g) => `${rows.filter((r) => r.gates[key] === g).length}`).join(" / ");
 
@@ -28,7 +36,13 @@ const metrics = [
   ["list kind open-run / task-tool / todo.md", (r) => ["open-run", "task-tool", "todo.md"].map((k) => r.filter((s) => s.list === k).length).join(" / ")],
   ["todo.md kept", (r) => rate(r, (s) => s.todoKept)],
   ["todo.md fully resolved at the end", (r) => rate(r, (s) => s.openSteps === 0)],
+  ["task tools offered", (r) => rate(r, (s) => s.taskTools)],
+  ["task-tool list kept", (r) => rate(r, kept)],
+  ["task-tool list fully resolved at the end", (r) => rate(r, (s) => kept(s) && s.taskList.open === 0)],
+  ["every list kept fully resolved", (r) => rate(r, resolved)],
+  ["playbook opened by open-run", (r) => counts(r, (s) => s.playbook)],
   ["ran --check", (r) => rate(r, (s) => s.checkRan)],
+  ["runs with a stop held by run-gate", (r) => rate(r, (s) => s.gateBlocks > 0)],
   ["stops held by run-gate (mean)", (r) => mean(r, (s) => s.gateBlocks)],
   ["decision rows (mean)", (r) => mean(r, (s) => s.decisionRows)],
   ["deslop done / skipped / claimed / missing", (r) => gates(r, "deslop")],
@@ -38,7 +52,7 @@ const metrics = [
   ["visible tests pass", (r) => rate(r, (s) => s.visibleTests)],
   ["held-out tests pass", (r) => rate(r, (s) => s.hiddenTests)],
   ["turns (mean)", (r) => mean(r, (s) => s.turns)],
-  ["minutes (mean)", (r) => mean(r, (s) => (s.ms ?? s.seconds * 1000) / 60000)],
+  ["minutes (mean)", (r) => mean(r, minutes)],
   ["USD (mean)", (r) => mean(r, (s) => s.usd)],
 ];
 
@@ -51,13 +65,18 @@ const lines = [
   `| Metric | ${arms.join(" | ")} |`,
   `| --- | ${arms.map(() => "---").join(" | ")} |`,
   ...metrics.map(([name, fn]) => `| ${name} | ${arms.map((arm) => fn(byArm[arm])).join(" | ")} |`),
-  "",
-  "## Held-out tests by task",
-  "",
-  `| Task | ${arms.join(" | ")} |`,
-  `| --- | ${arms.map(() => "---").join(" | ")} |`,
-  ...["slugkit", "tally", "confload"].map(
-    (task) => `| ${task} | ${arms.map((arm) => rate(byArm[arm].filter((s) => s.task === task), (s) => s.hiddenTests)).join(" | ")} |`,
-  ),
+  ...[
+    ["Held-out tests by task", (r) => rate(r, (s) => s.hiddenTests)],
+    ["Minutes (mean) by task", (r) => mean(r, minutes)],
+    ["Runs with a stop held by run-gate, by task", (r) => rate(r, (s) => s.gateBlocks > 0)],
+    ["Every list kept fully resolved, by task", (r) => rate(r, resolved)],
+  ].flatMap(([title, fn]) => [
+    "",
+    `## ${title}`,
+    "",
+    `| Task | ${arms.join(" | ")} |`,
+    `| --- | ${arms.map(() => "---").join(" | ")} |`,
+    ...tasks.map((task) => `| ${task} | ${arms.map((arm) => fn(byArm[arm].filter((s) => s.task === task))).join(" | ")} |`),
+  ]),
 ];
 console.log(lines.join("\n"));
