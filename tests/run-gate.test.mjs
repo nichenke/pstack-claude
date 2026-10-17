@@ -288,6 +288,17 @@ describe("run-gate lets a stop through while background work runs", () => {
         '<summary>Agent \\"x\\" is waiting on its own background work</summary>',
       );
       expect(gate(dir, [record("agent-launch", A), asUserTurn])).toBe(0);
+      expect(gate(dir, [...interim, record("task-stop", A)])).toBe(2);
+    }));
+
+  test("the waiting wording keeps only a launched agent in flight, and only on a completed notice", () =>
+    withDir((dir) => {
+      expect(gate(dir, [record("notification-interim", A)])).toBe(2);
+      const killedWaiting = record("notification-killed", A).replace(
+        "<summary>redacted</summary>",
+        '<summary>Agent \\"x\\" is waiting on its own background work</summary>',
+      );
+      expect(gate(dir, [record("agent-launch", A), killedWaiting])).toBe(2);
     }));
 
   test("a final result that quotes the interim wording still ends the agent", () =>
@@ -297,6 +308,11 @@ describe("run-gate lets a stop through while background work runs", () => {
         "</summary>\\n<result>it is waiting on its own background work</result>",
       );
       expect(gate(dir, [record("agent-launch", A), quoted])).toBe(2);
+      const relayed = record("notification-user", A).replace(
+        "</summary>",
+        '</summary>\\n<result><summary>Agent \\"y\\" is waiting on its own background work</summary></result>',
+      );
+      expect(gate(dir, [record("agent-launch", A), relayed])).toBe(2);
     }));
 
   test("with background_tasks, a waiting agent holds the stop open only while some task is still listed", () =>
@@ -307,6 +323,16 @@ describe("run-gate lets a stop through while background work runs", () => {
       expect(gate(dir, interim, { background_tasks: [] })).toBe(2);
       expect(gate(dir, [...interim, record("notification-user", A)], shell)).toBe(2);
       expect(gate(dir, [record("agent-launch", A)], shell)).toBe(2);
+      expect(gate(dir, [...interim, record("agent-resume", A)], shell)).toBe(2);
+    }));
+
+  test("a waiting agent does not count the main session's own shells and monitors, which can outlive the work", () =>
+    withDir((dir) => {
+      const interim = [record("agent-launch", A), record("notification-interim", A)];
+      const listed = (type) => ({ background_tasks: [{ id: "b1", type, status: "running", description: "x" }] });
+      expect(gate(dir, [...interim, record("bash-launch", "b1")], listed("shell"))).toBe(2);
+      expect(gate(dir, [...interim, record("monitor-launch", "b1")], listed("monitor"))).toBe(2);
+      expect(gate(dir, [...interim, record("bash-launch", "b2")], listed("shell"))).toBe(0);
     }));
 
   test("a background forked skill and a workflow count as in flight", () =>
