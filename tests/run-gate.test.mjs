@@ -313,6 +313,13 @@ describe("run-gate lets a stop through while background work runs", () => {
         '</summary>\\n<result><summary>Agent \\"y\\" is waiting on its own background work</summary></result>',
       );
       expect(gate(dir, [record("agent-launch", A), relayed])).toBe(2);
+      const tagged = (summary, result = "") =>
+        record("notification-user", A).replace("<summary>redacted</summary>", `<summary>${summary}</summary>${result}`);
+      const waitingTagged = 'Agent \\"fix <Button>\\" is waiting on its own background work';
+      expect(gate(dir, [record("agent-launch", A), tagged(waitingTagged)])).toBe(0);
+      expect(
+        gate(dir, [record("agent-launch", A), tagged('Agent \\"fix <Button>\\" finished', `\\n<result><summary>${waitingTagged}</summary></result>`)]),
+      ).toBe(2);
     }));
 
   test("with background_tasks, a waiting agent holds the stop open only while some task is still listed", () =>
@@ -333,6 +340,8 @@ describe("run-gate lets a stop through while background work runs", () => {
       expect(gate(dir, [...interim, record("bash-launch", "b1")], listed("shell"))).toBe(2);
       expect(gate(dir, [...interim, record("monitor-launch", "b1")], listed("monitor"))).toBe(2);
       expect(gate(dir, [...interim, record("bash-launch", "b2")], listed("shell"))).toBe(0);
+      const otherTaskResult = JSON.stringify({ type: "user", toolUseResult: { success: true, taskId: "b1" } });
+      expect(gate(dir, [...interim, otherTaskResult], listed("shell"))).toBe(0);
     }));
 
   test("a background forked skill and a workflow count as in flight", () =>
