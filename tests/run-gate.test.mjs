@@ -9,6 +9,7 @@ const pluginRoot = fileURLToPath(new URL("../plugins/pstack/", import.meta.url))
 const stop = JSON.parse(readFileSync(join(pluginRoot, "hooks/hooks.json"), "utf8")).hooks.Stop[0];
 const command = stop.hooks[0].command;
 const openRun = join(pluginRoot, "skills/poteto-mode/scripts/open-run.mjs");
+const records = JSON.parse(readFileSync(new URL("fixtures/run-gate/transcript-records.json", import.meta.url), "utf8"));
 const SESSION = "s1";
 
 function openRunOut(...args) {
@@ -16,6 +17,7 @@ function openRunOut(...args) {
   return spawnSync("node", [openRun, ...args], { encoding: "utf8", env }).stdout;
 }
 
+const record = (name, id) => JSON.stringify(records[name]).replace(/[abw]0{15}1/g, id ?? "$&");
 
 function withDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), "pstack-run-gate-"));
@@ -221,3 +223,101 @@ describe("run-gate holds only this session's list", () => {
       expect(runHook(dir, [bashResult(out)], { session_id: "s2" }).status).toBe(0);
     }));
 });
+
+describe("run-gate lets a stop through while background work runs", () => {
+  const open = "- [x] 1. done\n- [ ] 2. open\n";
+  const A = "a1111111111111111";
+  const B = "a2222222222222222";
+  const gate = (dir, lines, input) => runHook(dir, [bashResult(`${todo(dir, "todo.md", open)}: 2 steps`), ...lines], input).status;
+
+  test("an async agent launched and not finished lets the stop through", () =>
+    withDir((dir) => expect(gate(dir, [record("agent-launch", A)])).toBe(0)));
+
+  test("its completion, delivered as a user turn or as an attachment, brings the gate back", () =>
+    withDir((dir) => {
+      expect(gate(dir, [record("agent-launch", A), record("notification-user", A)])).toBe(2);
+      expect(gate(dir, [record("agent-launch", A), record("notification-attachment", A)])).toBe(2);
+    }));
+
+  test("two agents in flight hold the gate open until both finish", () =>
+    withDir((dir) => {
+      const both = [record("agent-launch", A), record("agent-launch", B)];
+      expect(gate(dir, [...both, record("notification-user", A)])).toBe(0);
+      expect(gate(dir, [...both, record("notification-user", A), record("notification-attachment", B)])).toBe(2);
+    }));
+
+  test("duplicate and stray completions never count below zero", () =>
+    withDir((dir) => {
+      const done = [record("agent-launch", A), record("notification-user", A), record("notification-attachment", A)];
+      expect(gate(dir, [...done, record("notification-user", A)])).toBe(2);
+      expect(gate(dir, [record("notification-user", B), record("agent-launch", A), record("notification-user", A)])).toBe(2);
+      expect(gate(dir, [...done, record("notification-user", B), record("agent-launch", B)])).toBe(0);
+    }));
+
+  test("queue-operation records alone neither finish nor launch anything", () =>
+    withDir((dir) => {
+      expect(gate(dir, [record("agent-launch", A), record("queue-enqueue", A), record("queue-remove", A)])).toBe(0);
+      expect(gate(dir, [record("queue-enqueue", A)])).toBe(2);
+    }));
+
+  test("an agent resumed with SendMessage is in flight again until it notifies again", () =>
+    withDir((dir) => {
+      const first = [record("agent-launch", A), record("notification-user", A), record("agent-resume", A)];
+      expect(gate(dir, first)).toBe(0);
+      expect(gate(dir, [...first, record("notification-attachment", A)])).toBe(2);
+    }));
+
+  test("killed, stopped, and TaskStop end an agent; a pending notification does not", () =>
+    withDir((dir) => {
+      expect(gate(dir, [record("agent-launch", A), record("notification-killed", A)])).toBe(2);
+      expect(gate(dir, [record("agent-launch", A), record("notification-stopped", A)])).toBe(2);
+      expect(gate(dir, [record("agent-launch", A), record("task-stop", A)])).toBe(2);
+      expect(gate(dir, [record("agent-launch", A), record("notification-pending")])).toBe(0);
+    }));
+
+  test("a background forked skill and a workflow count as in flight", () =>
+    withDir((dir) => {
+      expect(gate(dir, [record("forked-skill-launch", A)])).toBe(0);
+      expect(gate(dir, [record("forked-skill-launch", A), record("notification-user", A)])).toBe(2);
+      expect(gate(dir, [record("workflow-launch", "w3333333333333333")])).toBe(0);
+    }));
+
+  test("a background shell command or a monitor does not, since either can outlive the work", () =>
+    withDir((dir) => {
+      expect(gate(dir, [record("bash-launch")])).toBe(2);
+      expect(gate(dir, [record("monitor-launch")])).toBe(2);
+    }));
+
+  test("a launch on a subagent's sidechain is the subagent's, not the main session's", () =>
+    withDir((dir) => {
+      const sidechain = JSON.stringify({ ...JSON.parse(record("agent-launch", A)), isSidechain: true });
+      expect(gate(dir, [sidechain])).toBe(2);
+    }));
+
+  test("a transcript with unparsable lines and no launch record blocks as before", () =>
+    withDir((dir) => expect(gate(dir, ["{not json", '{"type":"user","toolUseResult":"async_launched"}'])).toBe(2)));
+
+  test("the Stop input's background_tasks, when present, decides instead of the transcript", () =>
+    withDir((dir) => {
+      const running = (type) => ({ background_tasks: [{ id: A, type, status: "running", description: "x" }] });
+      expect(gate(dir, [], running("subagent"))).toBe(0);
+      expect(gate(dir, [], running("workflow"))).toBe(0);
+      expect(gate(dir, [], running("shell"))).toBe(2);
+      expect(gate(dir, [], running("monitor"))).toBe(2);
+      expect(gate(dir, [record("agent-launch", A)], { background_tasks: [] })).toBe(2);
+      expect(gate(dir, [], { background_tasks: [{ id: A, type: "subagent", status: "completed" }] })).toBe(2);
+      expect(gate(dir, [record("agent-launch", A)], { background_tasks: "bogus" })).toBe(0);
+    }));
+
+  test("in-flight work never holds a stop the list would let through", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", "- [x] 1. done\n");
+      expect(runHook(dir, [bashResult(`${file}: 1 steps`), record("agent-launch", A)]).status).toBe(0);
+      expect(runHook(dir, [record("agent-launch", A)], { background_tasks: [] }).status).toBe(0);
+    }));
+
+  test("stop_hook_active still lets the second stop through with an agent finished", () =>
+    withDir((dir) =>
+      expect(gate(dir, [record("agent-launch", A), record("notification-user", A)], { stop_hook_active: true })).toBe(0)));
+});
+

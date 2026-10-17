@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Stop hook: blocks the main session's first stop when the latest todolist that open-run reported
 // with this session's id in its header still has a step not checked off or marked skip:, n/a: or
-// BLOCKED:. A second stop goes through.
+// BLOCKED:. A second stop goes through, and so does a stop while a background agent or workflow
+// runs, since its completion wakes the session again. Background detection only ever lets a stop
+// through: with no `background_tasks` input and no launch record it recognises, the gate holds.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,41 +12,80 @@ import { OPENED, ownedList } from "../skills/poteto-mode/scripts/run-list.mjs";
 
 const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mjs", import.meta.url));
 
-function resultTexts(entry) {
-	const content = entry?.message?.content;
-	if (entry?.type !== "user" || entry.isSidechain || !Array.isArray(content)) return [];
-	return content
-		.filter((block) => block?.type === "tool_result")
-		.flatMap((block) =>
-			typeof block.content === "string"
-				? [block.content]
-				: (block.content ?? []).filter((part) => part?.type === "text").map((part) => part.text),
-		);
+const WAKES = new Set(["subagent", "workflow"]);
+const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
+const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"/;
+
+function texts(content) {
+	if (typeof content === "string") return [content];
+	return Array.isArray(content) ? content.filter((part) => part?.type === "text").map((part) => part.text) : [];
 }
 
-function openedLists(transcript) {
+function resultTexts(entry) {
+	const content = entry.message?.content;
+	if (entry.type !== "user" || !Array.isArray(content)) return [];
+	return content.filter((block) => block?.type === "tool_result").flatMap((block) => texts(block.content));
+}
+
+function launched(entry) {
+	const result = entry.toolUseResult;
+	if (entry.type !== "user" || !result || typeof result !== "object") return null;
+	if (result.status === "async_launched") return result.agentId ?? result.taskId ?? null;
+	if (result.status === "forked" && result.background === true) return result.agentId ?? null;
+	return typeof result.resumedAgentId === "string" ? result.resumedAgentId : null;
+}
+
+function ended(entry) {
+	if (entry.type === "user" && typeof entry.toolUseResult?.task_id === "string") return [entry.toolUseResult.task_id];
+	const notice =
+		entry.type === "user" && entry.origin?.kind === "task-notification"
+			? entry.message?.content
+			: entry.type === "attachment" && entry.attachment?.commandMode === "task-notification"
+				? entry.attachment.prompt
+				: null;
+	const ids = [];
+	for (const text of texts(notice))
+		for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
+			const id = body.match(/<task-id>([^<]+)<\/task-id>/)?.[1];
+			if (id && ENDED.has(body.match(/<status>([^<]+)<\/status>/)?.[1])) ids.push(id);
+		}
+	return ids;
+}
+
+function readTranscript(file) {
 	const opened = [];
-	for (const line of fs.readFileSync(transcript, "utf8").split("\n")) {
-		if (!line.includes("todo.md")) continue;
+	const running = new Set();
+	for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+		if (!RELEVANT.test(line)) continue;
 		let entry;
 		try {
 			entry = JSON.parse(line);
 		} catch {
 			continue;
 		}
+		if (!entry || entry.isSidechain) continue;
 		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) opened.push(match[1]);
+		const id = launched(entry);
+		if (id) running.add(id);
+		for (const done of ended(entry)) running.delete(done);
 	}
-	return opened;
+	return { opened, running: running.size };
 }
 
 const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
 if (input.stop_hook_active || !input.transcript_path || !fs.existsSync(input.transcript_path)) process.exit(0);
 
-const todo = ownedList(openedLists(input.transcript_path), input.session_id);
+const transcript = readTranscript(input.transcript_path);
+const todo = ownedList(transcript.opened, input.session_id);
 if (!todo) process.exit(0);
 
 const check = spawnSync(process.execPath, [openRun, "--check", todo], { encoding: "utf8" });
 if (check.status !== 1) process.exit(0);
+
+const busy = Array.isArray(input.background_tasks)
+	? input.background_tasks.some((task) => WAKES.has(task?.type) && !ENDED.has(task?.status))
+	: transcript.running > 0;
+if (busy) process.exit(0);
 
 process.stderr.write(
 	[
