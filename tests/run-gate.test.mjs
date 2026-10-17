@@ -9,7 +9,13 @@ const pluginRoot = fileURLToPath(new URL("../plugins/pstack/", import.meta.url))
 const stop = JSON.parse(readFileSync(join(pluginRoot, "hooks/hooks.json"), "utf8")).hooks.Stop[0];
 const command = stop.hooks[0].command;
 const openRun = join(pluginRoot, "skills/poteto-mode/scripts/open-run.mjs");
-const openRunOut = (...args) => spawnSync("node", [openRun, ...args], { encoding: "utf8" }).stdout;
+const SESSION = "s1";
+
+function openRunOut(...args) {
+  const env = { ...process.env, CLAUDE_CODE_SESSION_ID: SESSION };
+  return spawnSync("node", [openRun, ...args], { encoding: "utf8", env }).stdout;
+}
+
 
 function withDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), "pstack-run-gate-"));
@@ -38,15 +44,21 @@ function runHook(dir, lines, input = {}) {
   writeFileSync(transcript, lines.join("\n") + "\n");
   const r = spawnSync("sh", ["-c", command], {
     env: { PATH: process.env.PATH, CLAUDE_PLUGIN_ROOT: pluginRoot },
-    input: JSON.stringify({ hook_event_name: "Stop", transcript_path: transcript, stop_hook_active: false, ...input }),
+    input: JSON.stringify({
+      hook_event_name: "Stop",
+      session_id: SESSION,
+      transcript_path: transcript,
+      stop_hook_active: false,
+      ...input,
+    }),
     encoding: "utf8",
   });
   return { status: r.status, out: r.stdout, err: r.stderr };
 }
 
-function todo(dir, name, body) {
+function todo(dir, name, body, session = SESSION) {
   const file = join(dir, name);
-  writeFileSync(file, body);
+  writeFileSync(file, `${session ? `Session: ${session}\n` : ""}${body}`);
   return file;
 }
 
@@ -61,7 +73,7 @@ describe("run-gate Stop hook", () => {
       const file = todo(dir, "todo.md", "- [x] 1. done\n- [ ] 2. Run `/deslop` over the diff before commit.\n");
       const r = runHook(dir, [bashResult(`${file}: 2 steps, 3 PR gates\n${dir}/decisions.tsv: started`)]);
       expect(r.status).toBe(2);
-      expect(r.err).toContain(`${file}:2: 2. Run \`/deslop\` over the diff before commit.`);
+      expect(r.err).toContain(`${file}:3: 2. Run \`/deslop\` over the diff before commit.`);
       expect(r.err).toContain("skip: <reason>");
     }));
 
@@ -78,7 +90,7 @@ describe("run-gate Stop hook", () => {
       const r = runHook(dir, [bashResult(`${file}: 2 steps\n${dir}/.audit/fix-login.tsv: started`)]);
       expect(r.status).toBe(2);
       expect(r.err).toContain(".audit/fix-login.todo.md still has open steps.");
-      expect(r.err).toContain(`${file}:2: 2. open`);
+      expect(r.err).toContain(`${file}:3: 2. open`);
     }));
 
   test("stays out of a markdown file that only ends in todo.md", () =>
@@ -97,7 +109,7 @@ describe("run-gate Stop hook", () => {
     withDir((dir) => {
       const file = todo(dir, "todo.md", "- [x] 1. done\n- [ ] BLOCKED: independent review\n");
       expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(0);
-      writeFileSync(file, "- [x] 1. done\n- [ ] BLOCKED:\n");
+      todo(dir, "todo.md", "- [x] 1. done\n- [ ] BLOCKED:\n");
       expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(2);
     }));
 
@@ -153,5 +165,59 @@ describe("run-gate Stop hook", () => {
   test("lets the stop through when the list it found is gone", () =>
     withDir((dir) => {
       expect(runHook(dir, [bashResult(`${dir}/missing/todo.md: 1 steps`)]).status).toBe(0);
+    }));
+});
+
+describe("run-gate holds only this session's list", () => {
+  const open = "- [x] 1. done\n- [ ] 2. open\n";
+
+  test("another session's list, adopted from a shared work dir, holds nothing", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", open, "s2");
+      expect(runHook(dir, [bashResult(`${file} exists; left as is`)])).toEqual({ status: 0, out: "", err: "" });
+      expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(0);
+    }));
+
+  test("a list with no session id holds nothing", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", open, null);
+      expect(runHook(dir, [bashResult(`${file}: 2 steps`)]).status).toBe(0);
+    }));
+
+  test("a hook input with no session id holds nothing", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", open);
+      expect(runHook(dir, [bashResult(`${file}: 2 steps`)], { session_id: undefined }).status).toBe(0);
+    }));
+
+  test("looks back past a later list another session owns to this session's open one", () =>
+    withDir((dir) => {
+      mkdirSync(join(dir, "theirs"));
+      const mine = todo(dir, "todo.md", open);
+      const theirs = todo(dir, "theirs/todo.md", "- [x] 1. done\n", "s2");
+      const r = runHook(dir, [bashResult(`${mine}: 2 steps`), bashResult(`${theirs} exists; left as is`)]);
+      expect(r.status).toBe(2);
+      expect(r.err).toContain(`${basename(dir)}/todo.md still has open steps`);
+    }));
+
+  test("a later list of this session's own still supersedes an earlier one", () =>
+    withDir((dir) => {
+      mkdirSync(join(dir, "next"));
+      const first = todo(dir, "todo.md", open);
+      const next = todo(dir, "next/todo.md", "- [x] 1. done\n");
+      expect(runHook(dir, [bashResult(`${first}: 2 steps`), bashResult(`${next}: 1 steps`)]).status).toBe(0);
+    }));
+
+  test("a later list that is gone does not revive the one it superseded", () =>
+    withDir((dir) => {
+      const first = todo(dir, "todo.md", open);
+      expect(runHook(dir, [bashResult(`${first}: 2 steps`), bashResult(`${dir}/gone/todo.md: 1 steps`)]).status).toBe(0);
+    }));
+
+  test("end to end with open-run: the opening session is held, any other is not", () =>
+    withDir((dir) => {
+      const out = openRunOut("bug-fix", join(dir, "run"));
+      expect(runHook(dir, [bashResult(out)]).status).toBe(2);
+      expect(runHook(dir, [bashResult(out)], { session_id: "s2" }).status).toBe(0);
     }));
 });
