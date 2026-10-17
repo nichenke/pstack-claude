@@ -281,6 +281,13 @@ describe("run-gate lets a stop through while background work runs", () => {
       expect(gate(dir, interim)).toBe(0);
       expect(gate(dir, [...interim, record("notification-attachment", A)])).toBe(2);
       expect(gate(dir, [...interim, record("notification-killed", A)])).toBe(2);
+      expect(gate(dir, [...interim, record("notification-interim", A)])).toBe(0);
+      expect(gate(dir, [...interim, record("agent-resume", A), record("notification-user", A)])).toBe(2);
+      const asUserTurn = record("notification-user", A).replace(
+        "<summary>redacted</summary>",
+        '<summary>Agent \\"x\\" is waiting on its own background work</summary>',
+      );
+      expect(gate(dir, [record("agent-launch", A), asUserTurn])).toBe(0);
     }));
 
   test("a final result that quotes the interim wording still ends the agent", () =>

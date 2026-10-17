@@ -15,6 +15,9 @@ const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mj
 const WAKES = new Set(["subagent", "workflow"]);
 const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
 const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"/;
+// Claude Code notifies an agent whose own background work still runs as completed with this summary,
+// leaves it out of background_tasks, and notifies the same task id again once that work finishes.
+const WAITING = /<summary>.* is waiting on its own background work<\/summary>/;
 
 function texts(content) {
 	if (typeof content === "string") return [content];
@@ -35,8 +38,9 @@ function launched(entry) {
 	return typeof result.resumedAgentId === "string" ? result.resumedAgentId : null;
 }
 
-function ended(entry) {
-	if (entry.type === "user" && typeof entry.toolUseResult?.task_id === "string") return [entry.toolUseResult.task_id];
+function notified(entry) {
+	if (entry.type === "user" && typeof entry.toolUseResult?.task_id === "string")
+		return [{ id: entry.toolUseResult.task_id, waiting: false }];
 	const notice =
 		entry.type === "user" && entry.origin?.kind === "task-notification"
 			? entry.message?.content
@@ -47,14 +51,14 @@ function ended(entry) {
 	for (const text of texts(notice))
 		for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
 			const id = body.match(/<task-id>([^<]+)<\/task-id>/)?.[1];
-			if (id && ENDED.has(body.match(/<status>([^<]+)<\/status>/)?.[1])) ids.push(id);
+			if (id && ENDED.has(body.match(/<status>([^<]+)<\/status>/)?.[1])) ids.push({ id, waiting: WAITING.test(body) });
 		}
 	return ids;
 }
 
 function readTranscript(file) {
 	const opened = [];
-	const running = new Set();
+	const running = new Map();
 	for (const line of fs.readFileSync(file, "utf8").split("\n")) {
 		if (!RELEVANT.test(line)) continue;
 		let entry;
@@ -66,10 +70,12 @@ function readTranscript(file) {
 		if (!entry || entry.isSidechain) continue;
 		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) opened.push(match[1]);
 		const id = launched(entry);
-		if (id) running.add(id);
-		for (const done of ended(entry)) running.delete(done);
+		if (id) running.set(id, false);
+		for (const notice of notified(entry))
+			if (notice.waiting) running.set(notice.id, true);
+			else running.delete(notice.id);
 	}
-	return { opened, running: running.size };
+	return { opened, running: running.size, waiting: [...running.values()].includes(true) };
 }
 
 const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
@@ -83,7 +89,9 @@ const check = spawnSync(process.execPath, [openRun, "--check", todo], { encoding
 if (check.status !== 1) process.exit(0);
 
 const busy = Array.isArray(input.background_tasks)
-	? input.background_tasks.some((task) => WAKES.has(task?.type) && !ENDED.has(task?.status))
+	? input.background_tasks.some(
+			(task) => !ENDED.has(task?.status) && (WAKES.has(task?.type) || transcript.waiting),
+		)
 	: transcript.running > 0;
 if (busy) process.exit(0);
 
