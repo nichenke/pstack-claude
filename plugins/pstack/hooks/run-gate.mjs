@@ -15,8 +15,8 @@ const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mj
 const WAKES = new Set(["subagent", "workflow"]);
 const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
 const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"/;
-// Claude Code notifies an agent whose own background work still runs as completed with this summary,
-// leaves it out of background_tasks, and notifies the same task id again once that work finishes.
+// Claude Code 2.1.302 notifies an agent whose own background work still runs as completed with this summary
+// and leaves it out of background_tasks. The same task id notifies again if the agent resumes when that work ends.
 const WAITING = /<summary>.* is waiting on its own background work<\/summary>/;
 
 function texts(content) {
