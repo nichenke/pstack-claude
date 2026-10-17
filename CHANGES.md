@@ -2,6 +2,16 @@
 
 This file is the release changelog, with one `## <version> - <title>` entry per release, newest first. The Cursor-to-Claude rewrite rules live in [`tools/substitutions.json`](tools/substitutions.json), and the [sync boundary](CONTRIBUTING.md#the-sync-boundary) in `CONTRIBUTING.md` defines how a change to upstream's skill content is declared.
 
+## 0.9.90 - the run gate holds only its own session's list, and not while background agents run
+
+Two false positives in the 0.9.89 Stop hook. The [2026-10-16 re-run](docs/analysis/2026-10-16-run-gate-eval-rerun-analysis.md) found concurrent sessions sharing one `todo.md`, because `open-run.mjs` answered a second session with `exists; left as is` and the hook then held each session on steps another owned. An interactive session that stopped to wait for background subagents was held on steps those subagents were still doing.
+
+- `open-run.mjs` writes a `Session: <id>` line into the header of a list it creates, from `CLAUDE_CODE_SESSION_ID`, and writes none when that is unset, as under Codex or a plain shell. A rerun with the same id, or with no id on either side, leaves the list as is. A list with a different id, or an id on one side only, is refused with exit 2, a message naming the owning session, and nothing written; pass `--slug <task-slug>` or choose another work dir.
+- `hooks/run-gate.mjs` checks only a list whose `Session:` line equals the Stop input's `session_id`. It walks back past lists other sessions own to the session's own latest list, and still lets the stop through when that list is gone.
+- The hook lets a stop through while a background subagent or workflow runs. It reads the Stop input's documented `background_tasks` array, and when that is absent it falls back to the transcript: async agent, background forked skill, and workflow launches and `SendMessage` resumes, against task notifications and `TaskStop` results. Background shell commands and monitors do not count, because a dev server or watcher can outlive the work. This detection only ever lets a stop through.
+- A headless `claude -p` run that stops with a delegate in flight is no longer held once before it exits.
+- `run-list.mjs` gains `listSession` and `ownedList`, which the hook and the eval scorer share, so `evals/run-gate/score.mjs` no longer scores a run on a list it adopted from another run.
+
 ## 0.9.89 - poteto-mode opens its todolist and trail with a script, and a Stop hook holds an open list
 
 These workflow changes are policy forks, declared in `tools/forks.json` for `poteto-mode/SKILL.md` and `figure-it-out/SKILL.md`. They were written against 0.9.35 and rebased onto 0.9.88.
