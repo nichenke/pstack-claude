@@ -17,10 +17,10 @@ const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mj
 
 const WAKES = new Set(["subagent", "workflow"]);
 const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
-const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"/;
+const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"|"taskId"|backgroundTaskId/;
 // Claude Code 2.1.302 notifies an agent whose own background work still runs as completed with this summary
 // and leaves it out of background_tasks. The same task id notifies again if the agent resumes when that work ends.
-const WAITING = /<summary>.* is waiting on its own background work<\/summary>/;
+const WAITING = " is waiting on its own background work";
 
 function texts(content) {
 	if (typeof content === "string") return [content];
@@ -41,6 +41,13 @@ function launched(entry) {
 	return typeof result.resumedAgentId === "string" ? result.resumedAgentId : null;
 }
 
+function ownShell(entry) {
+	const result = entry.toolUseResult;
+	if (entry.type !== "user" || !result || typeof result !== "object") return null;
+	if (typeof result.backgroundTaskId === "string") return result.backgroundTaskId;
+	return result.status === undefined && typeof result.taskId === "string" ? result.taskId : null;
+}
+
 function notified(entry) {
 	if (entry.type === "user" && typeof entry.toolUseResult?.task_id === "string")
 		return [{ id: entry.toolUseResult.task_id, waiting: false }];
@@ -54,7 +61,9 @@ function notified(entry) {
 	for (const text of texts(notice))
 		for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
 			const id = body.match(/<task-id>([^<]+)<\/task-id>/)?.[1];
-			if (id && ENDED.has(body.match(/<status>([^<]+)<\/status>/)?.[1])) ids.push({ id, waiting: WAITING.test(body) });
+			const status = body.match(/<status>([^<]+)<\/status>/)?.[1];
+			const summary = body.match(/<summary>([^<]*)<\/summary>/)?.[1] ?? "";
+			if (id && ENDED.has(status)) ids.push({ id, waiting: status === "completed" && summary.endsWith(WAITING) });
 		}
 	return ids;
 }
@@ -62,6 +71,7 @@ function notified(entry) {
 function readTranscript(lines) {
 	const opened = [];
 	const running = new Map();
+	const shells = new Set();
 	for (const line of lines) {
 		if (!RELEVANT.test(line)) continue;
 		let entry;
@@ -74,11 +84,13 @@ function readTranscript(lines) {
 		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) opened.push(match[1]);
 		const id = launched(entry);
 		if (id) running.set(id, false);
+		const shell = ownShell(entry);
+		if (shell) shells.add(shell);
 		for (const notice of notified(entry))
-			if (notice.waiting) running.set(notice.id, true);
-			else running.delete(notice.id);
+			if (!notice.waiting) running.delete(notice.id);
+			else if (running.has(notice.id)) running.set(notice.id, true);
 	}
-	return { opened, running: running.size, waiting: [...running.values()].includes(true) };
+	return { opened, running: running.size, waiting: [...running.values()].includes(true), shells };
 }
 
 function readRollout(lines, thread) {
@@ -120,7 +132,9 @@ if (check.status !== 1) process.exit(0);
 
 const busy = Array.isArray(input.background_tasks)
 	? input.background_tasks.some(
-			(task) => !ENDED.has(task?.status) && (WAKES.has(task?.type) || transcript.waiting),
+			(task) =>
+				!ENDED.has(task?.status) &&
+				(WAKES.has(task?.type) || (transcript.waiting && !transcript.shells.has(task?.id))),
 		)
 	: transcript.running > 0;
 if (busy) process.exit(0);
