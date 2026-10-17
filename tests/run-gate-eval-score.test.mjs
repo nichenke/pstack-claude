@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gate, scoreStream, workTree } from "../evals/run-gate/score.mjs";
+import { gate, runList, scoreStream, workTree } from "../evals/run-gate/score.mjs";
 
 const repo = "/work/slugkit-x1";
 let id = 0;
@@ -19,7 +19,8 @@ const result = (text, parent = null) => ({
   message: { content: [{ type: "tool_result", tool_use_id: `t${id}`, content: [{ type: "text", text }] }] },
 });
 const stop = (code, output) => ({ type: "system", subtype: "hook_response", hook_event: "Stop", exit_code: code, output });
-const init = { type: "system", subtype: "init", cwd: repo, plugins: [{ name: "pstack", path: "/arms/p3/pstack" }] };
+const init = { type: "system", subtype: "init", session_id: "s1", cwd: repo, plugins: [{ name: "pstack", path: "/arms/p3/pstack" }] };
+const marked = (lists) => (file) => (file in lists ? `Session: ${lists[file]}\n` : null);
 const done = { type: "result", subtype: "success", is_error: false, num_turns: 9, duration_ms: 1000, total_cost_usd: 1.5 };
 
 describe("scoreStream", () => {
@@ -37,7 +38,8 @@ describe("scoreStream", () => {
       done,
     ]);
     expect(s.list).toEqual({ kind: "open-run", beforeFirstEdit: true });
-    expect(s.todoPath).toBe("/scratch/todo.md");
+    expect(s.opened).toEqual(["/scratch/todo.md"]);
+    expect(runList(s, marked({ "/scratch/todo.md": "s1" }))).toBe("/scratch/todo.md");
     expect(s.checkRan).toBe(true);
     expect(s.skills).toEqual(["pstack:poteto-mode", "pstack:deslop"]);
     expect(s.gateBlocks).toBe(1);
@@ -53,7 +55,7 @@ describe("scoreStream", () => {
       done,
     ]);
     expect(s.list.kind).toBe(null);
-    expect(s.todoPath).toBe(null);
+    expect(runList(s, marked({}))).toBe(null);
   });
 
   test("a list opened only after editing does not count as before the first edit", () => {
@@ -64,7 +66,7 @@ describe("scoreStream", () => {
   test("a hand-written todo.md counts, and writing it is not the first edit", () => {
     const s = scoreStream([init, use("Write", { file_path: "/scratch/todo.md" }), use("Edit", { file_path: `${repo}/a.py` }), done]);
     expect(s.list).toEqual({ kind: "todo.md", beforeFirstEdit: true });
-    expect(s.todoPath).toBe("/scratch/todo.md");
+    expect(runList(s, marked({}))).toBe("/scratch/todo.md");
   });
 
   test("a slug-named list counts, opened by open-run or written by hand, and neither file is the first edit", () => {
@@ -75,7 +77,7 @@ describe("scoreStream", () => {
       done,
     ]);
     expect(viaScript.list.kind).toBe("open-run");
-    expect(viaScript.todoPath).toBe(`${repo}/.audit/t.todo.md`);
+    expect(runList(viaScript, marked({ [`${repo}/.audit/t.todo.md`]: "s1" }))).toBe(`${repo}/.audit/t.todo.md`);
     const byHand = scoreStream([
       init,
       use("Write", { file_path: `${repo}/.audit/t.todo.md` }),
@@ -84,7 +86,27 @@ describe("scoreStream", () => {
       done,
     ]);
     expect(byHand.list).toEqual({ kind: "todo.md", beforeFirstEdit: true });
-    expect(byHand.todoPath).toBe(`${repo}/.audit/t.todo.md`);
+    expect(runList(byHand, marked({}))).toBe(`${repo}/.audit/t.todo.md`);
+  });
+
+  test("a list adopted from another session is not the run's, by the rule the Stop hook uses", () => {
+    const adopt = [
+      init,
+      use("Bash", { command: "node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs bug-fix /shared" }),
+      result("/shared/todo.md exists; left as is\n/shared/decisions.tsv exists; left as is"),
+    ];
+    expect(runList(scoreStream([...adopt, done]), marked({ "/shared/todo.md": "s2" }))).toBe(null);
+    expect(runList(scoreStream([...adopt, done]), marked({ "/shared/todo.md": "s1" }))).toBe("/shared/todo.md");
+    const ownAfter = scoreStream([
+      ...adopt,
+      use("Bash", { command: "node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs bug-fix /mine" }),
+      result("/mine/todo.md: 6 steps, 3 PR gates"),
+      use("Write", { file_path: "/scratch/todo.md" }),
+      done,
+    ]);
+    expect(runList(ownAfter, marked({ "/shared/todo.md": "s2", "/mine/todo.md": "s1" }))).toBe("/mine/todo.md");
+    expect(runList(ownAfter, marked({ "/shared/todo.md": "s2", "/mine/todo.md": "s2" }))).toBe("/scratch/todo.md");
+    expect(runList({ ...ownAfter, session: null }, marked({ "/mine/todo.md": "s1" }))).toBe("/scratch/todo.md");
   });
 
   test("a todo file written through a shell redirect counts as a hand-written list", () => {
@@ -115,7 +137,8 @@ describe("scoreStream", () => {
       done,
     ]);
     expect(s.list).toEqual({ kind: null, beforeFirstEdit: false });
-    expect(s.todoPath).toBe(null);
+    expect(s.opened).toEqual([]);
+    expect(runList(s, marked({ "/sub/todo.md": "s1" }))).toBe(null);
     expect(s.firstEditSeen).toBe(false);
     expect(s.skills).toEqual(["pstack:no-comments"]);
   });
