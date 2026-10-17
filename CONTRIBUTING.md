@@ -31,6 +31,28 @@ bun tools/sync.mjs pstack <new-upstream-sha>
 
 When a clean merge matches the new upstream text and mode, the sync reports it as `updated`. Any existing fork declaration becomes stale in that same run, and removing the declaration does not block the update. A surviving port mode change still counts as a fork even when the text matches upstream.
 
+## Installing from a checkout
+
+Install from the primary checkout, kept on `main`, rather than from a feature worktree. Claude Code reads the plugin from whatever the marketplace path has checked out, so a worktree left in place after its branch merges keeps serving its old hooks and skills to every new session.
+
+Add the checkout as a local marketplace in each tool, then install `pstack` from it:
+
+```shell
+claude plugin marketplace add <checkout>
+claude plugin install pstack@pstack-claude
+codex plugin marketplace add <checkout>
+codex plugin add pstack@pstack-claude
+```
+
+The GitHub install and any earlier checkout install register the same `pstack-claude` marketplace name, so remove it first with `claude plugin marketplace remove pstack-claude` and `codex plugin marketplace remove pstack-claude`. The same remove, add and install sequence moves the install to another path. `claude plugin list` shows the folder in use under `Read from:`.
+
+To try a branch before it merges, point the marketplace at its worktree, then point it back at the primary checkout before you remove the worktree.
+
+To update, run `git pull --ff-only` in the checkout. The two tools pick up the change differently:
+
+- Claude Code reads the plugin in place from `<checkout>/plugins/pstack`, so a pull or an edit takes effect at the next session start or after `/reload-plugins`. `claude plugin update` reports nothing to update.
+- Codex copies the plugin into `~/.codex/plugins/cache/pstack-claude/pstack/<version>/`, so rerun `codex plugin add pstack@pstack-claude` after each pull or edit and restart Codex. The rerun replaces the cached copy even when `VERSION` is unchanged. `codex plugin marketplace upgrade` refreshes only Git marketplaces and leaves a local one alone.
+
 ## Before you open a PR
 
 Install the root dependencies, then run the generator and the tests:
