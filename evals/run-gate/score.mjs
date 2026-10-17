@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { OPENED, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { OPENED, ownedList, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
@@ -30,7 +30,9 @@ export function scoreStream(events) {
   let index = 0;
   let list = null;
   let firstEdit = null;
-  let todoPath = null;
+  let session = null;
+  const opened = [];
+  let written = null;
   let checkRan = false;
   let gateBlocks = 0;
   let plugin = null;
@@ -47,6 +49,7 @@ export function scoreStream(events) {
 
   for (const event of events) {
     if (event.type === "system" && event.subtype === "init") {
+      session = event.session_id ?? session;
       plugin = (event.plugins ?? []).find((p) => p.name === "pstack")?.path ?? null;
       taskTools = (event.tools ?? []).some((tool) => tool === "TaskCreate" || tool === "TodoWrite");
     }
@@ -60,7 +63,7 @@ export function scoreStream(events) {
     const main = event.parent_tool_use_id == null;
     for (const block of event.message?.content ?? []) {
       if (event.type === "user" && block.type === "tool_result" && main) {
-        for (const match of resultText(block).matchAll(OPENED)) todoPath = match[1];
+        for (const match of resultText(block).matchAll(OPENED)) opened.push(match[1]);
         if (creates.delete(block.tool_use_id)) {
           created++;
           tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? String(created), "pending");
@@ -94,7 +97,7 @@ export function scoreStream(events) {
         else if (tasks.has(String(input.taskId))) tasks.set(String(input.taskId), input.status);
       }
       if (block.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
-      if (block.name === "Write" && TODO_FILE.test(file) && !todoPath) todoPath = file;
+      if (block.name === "Write" && TODO_FILE.test(file)) written ??= file;
       if (EDITS.has(block.name) && !RUN_FILE.test(file) && firstEdit === null) firstEdit = index;
     }
   }
@@ -103,7 +106,9 @@ export function scoreStream(events) {
   return {
     list: { kind: list?.kind ?? null, beforeFirstEdit: Boolean(list) && (firstEdit === null || list.at < firstEdit) },
     firstEditSeen: firstEdit !== null,
-    todoPath,
+    session,
+    opened,
+    written,
     todoHints,
     checkRan,
     gateBlocks,
@@ -115,6 +120,15 @@ export function scoreStream(events) {
     plugin,
     result,
   };
+}
+
+/**
+ * The list a scored stream kept: the one open-run opened that carries the run's own session id,
+ * by the rule the Stop hook uses, else the first todolist the main thread wrote by hand.
+ * `read` returns a list's text, or null when it cannot; the default reads the disk.
+ */
+export function runList(s, read) {
+  return ownedList(s.opened, s.session, read) ?? s.written;
 }
 
 /**
@@ -196,7 +210,7 @@ function scoreRun(runDir) {
   const trail = path.join(runDir, "decisions.tsv");
   // A list written by hand through the shell is found by its last relative or absolute target.
   const found =
-    s.todoPath ??
+    runList(s) ??
     s.todoHints
       .flatMap((hint) => (path.isAbsolute(hint) ? [hint] : worktrees(meta.repo).map((tree) => path.join(tree, hint))))
       .findLast((file) => fs.existsSync(file));

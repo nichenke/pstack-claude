@@ -65,7 +65,7 @@ Results land in `results/<timestamp>/`, which git ignores: `arms.tsv` maps arm t
 
 ## Scoring
 
-`score.mjs` reads the stream-json, never the candidate's own account of what it did. A list opened or an edit made by a subagent does not count for the main run, while a gate skill a subagent ran does. A gate counts as `skipped` only when its `todo.md` line carries a filled-in `skip:` or `n/a:` reason, as `open-run.mjs --check` requires, and as `claimed` when the line is checked off but the run never invoked it. The native task list is the main thread's `TaskCreate` tasks under their last `TaskUpdate` status, or its last `TodoWrite`, and a task still open is any not `completed`. `tests/run-gate-eval-score.test.mjs` covers the stream rules.
+`score.mjs` reads the stream-json, never the candidate's own account of what it did. A list opened or an edit made by a subagent does not count for the main run, while a gate skill a subagent ran does. A list `open-run.mjs` reports counts only when its `Session:` line names the run's own session, the rule the Stop hook uses, so a list adopted from another run's work dir is not the run's. A gate counts as `skipped` only when its `todo.md` line carries a filled-in `skip:` or `n/a:` reason, as `open-run.mjs --check` requires, and as `claimed` when the line is checked off but the run never invoked it. The native task list is the main thread's `TaskCreate` tasks under their last `TaskUpdate` status, or its last `TodoWrite`, and a task still open is any not `completed`. `tests/run-gate-eval-score.test.mjs` covers the stream rules.
 
 ## Blinding
 
