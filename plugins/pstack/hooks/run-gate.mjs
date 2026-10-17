@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Stop hook: blocks the main session's first stop when the latest todolist that
-// open-run reported still has a step not checked off or marked skip:, n/a: or BLOCKED:.
-// A second stop goes through.
+// Stop hook: blocks the main session's first stop when the latest todolist that open-run reported
+// with this session's id in its header still has a step not checked off or marked skip:, n/a: or
+// BLOCKED:. A second stop goes through.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { OPENED } from "../skills/poteto-mode/scripts/run-list.mjs";
+import { OPENED, ownedList } from "../skills/poteto-mode/scripts/run-list.mjs";
 
 const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mjs", import.meta.url));
 
@@ -22,8 +22,8 @@ function resultTexts(entry) {
 		);
 }
 
-function latestTodo(transcript) {
-	let latest = null;
+function openedLists(transcript) {
+	const opened = [];
 	for (const line of fs.readFileSync(transcript, "utf8").split("\n")) {
 		if (!line.includes("todo.md")) continue;
 		let entry;
@@ -32,16 +32,16 @@ function latestTodo(transcript) {
 		} catch {
 			continue;
 		}
-		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) latest = match[1];
+		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) opened.push(match[1]);
 	}
-	return latest;
+	return opened;
 }
 
 const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
 if (input.stop_hook_active || !input.transcript_path || !fs.existsSync(input.transcript_path)) process.exit(0);
 
-const todo = latestTodo(input.transcript_path);
-if (!todo || !fs.existsSync(todo)) process.exit(0);
+const todo = ownedList(openedLists(input.transcript_path), input.session_id);
+if (!todo) process.exit(0);
 
 const check = spawnSync(process.execPath, [openRun, "--check", todo], { encoding: "utf8" });
 if (check.status !== 1) process.exit(0);
