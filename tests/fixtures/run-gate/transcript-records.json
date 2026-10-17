@@ -224,5 +224,14 @@
     "type": "queue-operation",
     "operation": "remove",
     "content": "<task-notification>\n<task-id>b0000000000000001</task-id>\n<status>failed</status>\n<summary>redacted</summary>\n</task-notification>"
+  },
+  "notification-interim": {
+    "type": "attachment",
+    "isSidechain": false,
+    "attachment": {
+      "type": "queued_command",
+      "commandMode": "task-notification",
+      "prompt": "<task-notification>\n<task-id>a0000000000000001</task-id>\n<status>completed</status>\n<summary>Agent \"redacted\" is waiting on its own background work</summary>\n<note>This agent stopped with background work of its own still running. It may resume on its own when that work completes or reports, and the same task-id notifies again if it does; the result below may be interim.</note>\n</task-notification>"
+    }
   }
 }
