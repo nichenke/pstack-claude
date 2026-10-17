@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const strip = join(import.meta.dir, "../evals/run-gate/strip-run-gate.sh");
-const SENTENCE = " On Claude Code the plugin's Stop hook runs the same check and holds the first stop while a line is open.";
+const SENTENCE = " On Claude Code the plugin's Stop hook runs the same check and holds the first stop while a line is open and no background agent or workflow is still running.";
 const STEP = "4. Before the final reply, run `open-run.mjs --check` and resolve every line it prints.";
 const sessionStart = { matcher: "startup", hooks: [{ type: "command", command: '"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh" claude' }] };
 const runGate = { hooks: [{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/run-gate.mjs"' }] };
