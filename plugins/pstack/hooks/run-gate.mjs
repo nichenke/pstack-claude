@@ -14,7 +14,7 @@ const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mj
 
 const WAKES = new Set(["subagent", "workflow"]);
 const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
-const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"|"taskId"|backgroundTaskId/;
+const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"|backgroundTaskId|"persistent"/;
 // Claude Code 2.1.302 notifies an agent whose own background work still runs as completed with this summary
 // and leaves it out of background_tasks. The same task id notifies again if the agent resumes when that work ends.
 const WAITING = " is waiting on its own background work";
@@ -42,7 +42,7 @@ function ownShell(entry) {
 	const result = entry.toolUseResult;
 	if (entry.type !== "user" || !result || typeof result !== "object") return null;
 	if (typeof result.backgroundTaskId === "string") return result.backgroundTaskId;
-	return result.status === undefined && typeof result.taskId === "string" ? result.taskId : null;
+	return typeof result.persistent === "boolean" && typeof result.taskId === "string" ? result.taskId : null;
 }
 
 function notified(entry) {
@@ -59,7 +59,7 @@ function notified(entry) {
 		for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
 			const id = body.match(/<task-id>([^<]+)<\/task-id>/)?.[1];
 			const status = body.match(/<status>([^<]+)<\/status>/)?.[1];
-			const summary = body.match(/<summary>([^<]*)<\/summary>/)?.[1] ?? "";
+			const summary = body.split("<result>")[0].match(/<summary>([\s\S]*?)<\/summary>/)?.[1] ?? "";
 			if (id && ENDED.has(status)) ids.push({ id, waiting: status === "completed" && summary.endsWith(WAITING) });
 		}
 	return ids;
