@@ -1,0 +1,228 @@
+{
+  "agent-launch": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "status": "async_launched",
+      "isAsync": true,
+      "agentId": "a0000000000000001"
+    }
+  },
+  "forked-skill-launch": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "status": "forked",
+      "agentId": "a0000000000000001",
+      "background": true,
+      "success": true
+    }
+  },
+  "workflow-launch": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "status": "async_launched",
+      "taskId": "w0000000000000001",
+      "taskType": "local_workflow"
+    }
+  },
+  "agent-resume": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "resumedAgentId": "a0000000000000001",
+      "success": true
+    }
+  },
+  "bash-launch": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "backgroundTaskId": "b0000000000000001"
+    }
+  },
+  "monitor-launch": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "taskId": "b0000000000000001",
+      "persistent": false,
+      "timeoutMs": 1800000
+    }
+  },
+  "task-stop": {
+    "type": "user",
+    "isSidechain": false,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": [
+            {
+              "type": "text",
+              "text": "redacted"
+            }
+          ]
+        }
+      ]
+    },
+    "toolUseResult": {
+      "task_id": "b0000000000000001",
+      "task_type": "local_bash"
+    }
+  },
+  "notification-user": {
+    "type": "user",
+    "isSidechain": false,
+    "origin": {
+      "kind": "task-notification"
+    },
+    "message": {
+      "role": "user",
+      "content": "<task-notification>\n<task-id>a0000000000000001</task-id>\n<status>completed</status>\n<summary>redacted</summary>\n</task-notification>"
+    }
+  },
+  "notification-attachment": {
+    "type": "attachment",
+    "isSidechain": false,
+    "attachment": {
+      "type": "queued_command",
+      "commandMode": "task-notification",
+      "prompt": "<task-notification>\n<task-id>a0000000000000001</task-id>\n<status>completed</status>\n<summary>redacted</summary>\n</task-notification>"
+    }
+  },
+  "notification-killed": {
+    "type": "attachment",
+    "isSidechain": false,
+    "attachment": {
+      "type": "queued_command",
+      "commandMode": "task-notification",
+      "prompt": "<task-notification>\n<task-id>a0000000000000001</task-id>\n<status>killed</status>\n<summary>redacted</summary>\n</task-notification>"
+    }
+  },
+  "notification-stopped": {
+    "type": "user",
+    "isSidechain": false,
+    "origin": {
+      "kind": "task-notification"
+    },
+    "message": {
+      "role": "user",
+      "content": "<task-notification>\n<task-id>a0000000000000001</task-id>\n<status>stopped</status>\n<summary>redacted</summary>\n</task-notification>"
+    }
+  },
+  "notification-pending": {
+    "type": "user",
+    "isSidechain": false,
+    "origin": {
+      "kind": "task-notification"
+    },
+    "message": {
+      "role": "user",
+      "content": "<task-notification>\n<task-type>queued-remote-notifications</task-type>\n<status>pending</status>\n<summary>redacted</summary>\n</task-notification>"
+    }
+  },
+  "queue-enqueue": {
+    "type": "queue-operation",
+    "operation": "enqueue",
+    "content": "<task-notification>\n<task-id>b0000000000000001</task-id>\n<status>failed</status>\n<summary>redacted</summary>\n</task-notification>"
+  },
+  "queue-remove": {
+    "type": "queue-operation",
+    "operation": "remove",
+    "content": "<task-notification>\n<task-id>b0000000000000001</task-id>\n<status>failed</status>\n<summary>redacted</summary>\n</task-notification>"
+  }
+}
