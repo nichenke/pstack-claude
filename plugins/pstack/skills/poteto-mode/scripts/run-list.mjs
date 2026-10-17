@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 const SLUG_CHARS = "[A-Za-z0-9][A-Za-z0-9_-]*";
@@ -33,4 +34,42 @@ export function runFiles(dir, slug) {
 export function trailBeside(todo) {
 	const slug = path.basename(todo).match(new RegExp(`^(${SLUG_CHARS})\\.todo\\.md$`))?.[1];
 	return runFiles(path.dirname(todo), slug).trail;
+}
+
+/** The header line open-run writes into a list it creates, naming the Claude Code session that owns it. */
+export const sessionHeader = (id) => `Session: ${id}`;
+
+const SESSION_LINE = new RegExp(`^Session: (${SLUG_CHARS})$`);
+
+/** The session id in a list's header, the lines above its first checkbox, or null when it has none. */
+export function listSession(text) {
+	for (const line of text.split(/\r?\n/)) {
+		if (line.startsWith("- [")) break;
+		const id = line.match(SESSION_LINE)?.[1];
+		if (id) return id;
+	}
+	return null;
+}
+
+const readList = (file) => {
+	try {
+		return fs.readFileSync(file, "utf8");
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * The list a session's transcript points at: walking `opened` back from the latest path, the first
+ * list whose header names `session`. A list held by another session or by none is passed over. A
+ * list that is gone ends the walk with null, so a superseded list is never revived. `read` returns
+ * a list's text, or null when it cannot.
+ */
+export function ownedList(opened, session, read = readList) {
+	for (const file of [...opened].reverse()) {
+		const text = read(file);
+		if (text === null) return null;
+		if (session && listSession(text) === session) return file;
+	}
+	return null;
 }

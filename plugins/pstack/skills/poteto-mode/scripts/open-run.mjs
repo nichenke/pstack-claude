@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { RESOLVED, runFiles, SLUG } from "./run-list.mjs";
+import { listSession, RESOLVED, runFiles, sessionHeader, SLUG } from "./run-list.mjs";
 
 const mode = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const skills = path.dirname(mode);
@@ -83,7 +83,9 @@ function open(playbook, dir, slug, dryRun) {
 	const steps = figure ? phaseSteps(lines) : numberedSteps(lines);
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
+	const session = SLUG.test(process.env.CLAUDE_CODE_SESSION_ID ?? "") ? process.env.CLAUDE_CODE_SESSION_ID : null;
 	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
+	if (session) body.push(sessionHeader(session), "");
 	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
 	if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
 	const counts = `${steps.length} steps${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`;
@@ -97,6 +99,12 @@ function open(playbook, dir, slug, dryRun) {
 	const { todo, trail } = runFiles(dir, slug);
 
 	if (fs.existsSync(todo)) {
+		const owner = listSession(fs.readFileSync(todo, "utf8"));
+		if (owner !== session) {
+			const whose = owner ? `belongs to session ${owner}, not this one` : "has no Session: line, so this session did not open it";
+			console.error(`open-run: ${todo} ${whose}. Pass --slug <task-slug> or choose another work dir.`);
+			process.exit(2);
+		}
 		console.log(`${todo} exists; left as is`);
 	} else {
 		fs.writeFileSync(todo, body.join("\n") + "\n");

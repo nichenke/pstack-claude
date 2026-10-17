@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { listSession, OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const skills = join(import.meta.dir, "../plugins/pstack/skills");
 const mode = join(skills, "poteto-mode");
@@ -18,9 +18,18 @@ function withDir(fn) {
   }
 }
 
+const bare = { ...process.env };
+delete bare.CLAUDE_CODE_SESSION_ID;
+
+function runAs(session, ...args) {
+  const env = session === undefined ? bare : { ...bare, CLAUDE_CODE_SESSION_ID: session };
+  const result = spawnSync("node", [script, ...args], { encoding: "utf8", env });
+  return { code: result.status, out: result.stdout + result.stderr, stdout: result.stdout, stderr: result.stderr };
+}
+
 function run(...args) {
-  const result = spawnSync("node", [script, ...args], { encoding: "utf8" });
-  return { code: result.status, out: result.stdout + result.stderr };
+  const { code, out } = runAs(undefined, ...args);
+  return { code, out };
 }
 
 function boxes(todo) {
@@ -103,7 +112,7 @@ describe("open-run", () => {
 
   test("prints the list's absolute path, which the Stop hook reads back", () =>
     withDir((dir) => {
-      const result = spawnSync("node", [script, "feature", "run"], { cwd: dir, encoding: "utf8" });
+      const result = spawnSync("node", [script, "feature", "run"], { cwd: dir, encoding: "utf8", env: bare });
       expect(result.stdout).toMatch(new RegExp(`^/\\S*/run/todo\\.md: 8 steps`, "m"));
     }));
 
@@ -204,7 +213,7 @@ describe("open-run --dry-run", () => {
   test("prints the list a run would open and writes nothing", () =>
     withDir((dir) => {
       const work = join(dir, "run");
-      const result = spawnSync("node", [script, "--dry-run", "bug-fix", work], { cwd: dir, encoding: "utf8" });
+      const result = spawnSync("node", [script, "--dry-run", "bug-fix", work], { cwd: dir, encoding: "utf8", env: bare });
       expect(result.status).toBe(0);
       run("bug-fix", join(dir, "real"));
       expect(result.stdout).toStartWith(readFileSync(join(dir, "real/todo.md"), "utf8"));
@@ -247,6 +256,77 @@ describe("open-run --dry-run", () => {
       expect(run("--dry-run", "--check", playbook).code).toBe(2);
       expect(run("--dry-run").code).toBe(2);
       expect(readdirSync(dir)).toEqual(["ours.md"]);
+    }));
+});
+
+describe("open-run session marker", () => {
+  const SESSION = "7bec9594-37a3-450b-b757-d0bb6e330786";
+
+  test("writes the session id into the list's header, where --check does not read it", () =>
+    withDir((dir) => {
+      expect(runAs(SESSION, "bug-fix", dir).code).toBe(0);
+      const todo = readFileSync(join(dir, "todo.md"), "utf8");
+      expect(listSession(todo)).toBe(SESSION);
+      expect(todo.split("\n").filter((line) => line.includes(SESSION))).toEqual([`Session: ${SESSION}`]);
+      expect(todo.indexOf(`Session: ${SESSION}`)).toBeLessThan(todo.indexOf("- [ ] "));
+      const check = run("--check", join(dir, "todo.md"));
+      expect(check.out).not.toContain(SESSION);
+      expect(check.out).toContain(`${boxes(todo).length} open`);
+    }));
+
+  test("writes no marker when CLAUDE_CODE_SESSION_ID is unset, empty, or not an id", () =>
+    withDir((dir) => {
+      for (const [i, session] of [undefined, "", "a b", "x\nSession: forged"].entries()) {
+        const work = join(dir, `run${i}`);
+        expect(runAs(session, "bug-fix", work).code).toBe(0);
+        const todo = readFileSync(join(work, "todo.md"), "utf8");
+        expect(listSession(todo)).toBe(null);
+        expect(todo).not.toContain("Session:");
+      }
+    }));
+
+  test("reruns in the session that opened the list, and with no id on either side, leave it as is", () =>
+    withDir((dir) => {
+      runAs(SESSION, "feature", join(dir, "mine"));
+      writeFileSync(join(dir, "mine/todo.md"), `${readFileSync(join(dir, "mine/todo.md"), "utf8")}- [x] extra\n`);
+      const before = readFileSync(join(dir, "mine/todo.md"), "utf8");
+      const again = runAs(SESSION, "feature", join(dir, "mine"));
+      expect(again.code).toBe(0);
+      expect(again.stdout).toContain(`${join(dir, "mine/todo.md")} exists; left as is`);
+      expect(readFileSync(join(dir, "mine/todo.md"), "utf8")).toBe(before);
+      run("feature", join(dir, "plain"));
+      expect(runAs(undefined, "feature", join(dir, "plain")).stdout).toContain("todo.md exists; left as is");
+    }));
+
+  const refusals = [
+    ["another session's list", "other-session", SESSION, "belongs to session other-session"],
+    ["an unmarked list, from a session with an id", undefined, SESSION, "has no Session: line"],
+    ["a marked list, from a shell with no id", "other-session", undefined, "belongs to session other-session"],
+  ];
+  for (const [name, owner, caller, says] of refusals) {
+    test(`refuses ${name}, names the owner, writes nothing, and prints no line the Stop hook reads`, () =>
+      withDir((dir) => {
+        runAs(owner, "bug-fix", dir);
+        rmSync(join(dir, "decisions.tsv"));
+        const before = readFileSync(join(dir, "todo.md"), "utf8");
+        const result = runAs(caller, "bug-fix", dir);
+        expect(result.code).toBe(2);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain(`${join(dir, "todo.md")} ${says}`);
+        expect(result.stderr).toContain("--slug <task-slug>");
+        expect(result.stderr).toContain("another work dir");
+        expect([...result.out.matchAll(OPENED)]).toEqual([]);
+        expect(readFileSync(join(dir, "todo.md"), "utf8")).toBe(before);
+        expect(readdirSync(dir)).toEqual(["todo.md"]);
+      }));
+  }
+
+  test("the refusal's own advice works: a slug opens a separate list in the same dir", () =>
+    withDir((dir) => {
+      runAs("other-session", "bug-fix", dir);
+      const result = runAs(SESSION, "--slug", "mine", "bug-fix", dir);
+      expect(result.code).toBe(0);
+      expect(listSession(readFileSync(join(dir, "mine.todo.md"), "utf8"))).toBe(SESSION);
     }));
 });
 

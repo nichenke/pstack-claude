@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { OPENED, RUN_FILE, TODO_FILE, trailBeside } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { listSession, OPENED, ownedList, RUN_FILE, sessionHeader, TODO_FILE, trailBeside } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const opened = (text) => [...text.matchAll(OPENED)].map((m) => m[1]);
 
@@ -64,5 +67,51 @@ describe("run file names", () => {
   test("trailBeside pairs each list with the trail open-run wrote beside it", () => {
     expect(trailBeside("/s/todo.md")).toBe("/s/decisions.tsv");
     expect(trailBeside("/repo/.audit/fix-1.todo.md")).toBe("/repo/.audit/fix-1.tsv");
+  });
+});
+
+describe("list ownership", () => {
+  test("listSession reads the Session: line open-run writes, from the header block only", () => {
+    const header = ["# bug-fix", "", "Steps copied from poteto-mode/playbooks/bug-fix.md.", "", sessionHeader("s-1"), ""];
+    expect(listSession([...header, "- [ ] 1. open"].join("\n"))).toBe("s-1");
+    expect(listSession([...header.slice(0, 3), "", "- [ ] 1. open"].join("\r\n"))).toBe(null);
+    expect(listSession("# x\n\n- [ ] 1. step\nSession: s-1\n")).toBe(null);
+    expect(listSession("# x\n\n- [ ] Session: s-1\n")).toBe(null);
+    expect(listSession("Session: \n- [ ] 1. open\n")).toBe(null);
+    expect(listSession("Session: s 1\n")).toBe(null);
+    expect(listSession("")).toBe(null);
+  });
+
+  test("ownedList walks back from the latest list to the first this session owns", () => {
+    const lists = { "/a/todo.md": "Session: s1\n", "/b/todo.md": "Session: s2\n", "/c/todo.md": "# none\n" };
+    const read = (file) => lists[file] ?? null;
+    expect(ownedList(["/a/todo.md"], "s1", read)).toBe("/a/todo.md");
+    expect(ownedList(["/a/todo.md", "/b/todo.md", "/c/todo.md"], "s1", read)).toBe("/a/todo.md");
+    expect(ownedList(["/b/todo.md", "/a/todo.md", "/b/todo.md"], "s1", read)).toBe("/a/todo.md");
+    expect(ownedList(["/a/todo.md", "/b/todo.md"], "s2", read)).toBe("/b/todo.md");
+    expect(ownedList(["/b/todo.md", "/c/todo.md"], "s1", read)).toBe(null);
+    expect(ownedList([], "s1", read)).toBe(null);
+  });
+
+  test("ownedList stops at a missing list rather than reviving one it superseded", () => {
+    const read = (file) => (file === "/a/todo.md" ? "Session: s1\n" : null);
+    expect(ownedList(["/a/todo.md", "/gone/todo.md"], "s1", read)).toBe(null);
+  });
+
+  test("ownedList owns nothing for a session with no id, unmarked lists included", () => {
+    const read = () => "# none\n";
+    for (const session of [undefined, null, ""]) expect(ownedList(["/c/todo.md"], session, read)).toBe(null);
+  });
+
+  test("ownedList reads the disk by default", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pstack-run-list-"));
+    try {
+      writeFileSync(join(dir, "todo.md"), `# x\n\n${sessionHeader("s1")}\n\n- [ ] 1. open\n`);
+      expect(ownedList([join(dir, "todo.md")], "s1")).toBe(join(dir, "todo.md"));
+      expect(ownedList([join(dir, "todo.md")], "s2")).toBe(null);
+      expect(ownedList([join(dir, "todo.md"), join(dir, "gone/todo.md")], "s1")).toBe(null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
