@@ -12,7 +12,7 @@ root=${1:?usage: strip-run-gate.sh [--verify] <plugin-root>}
 hooks="$root/hooks/hooks.json"
 skill="$root/skills/poteto-mode/SKILL.md"
 gate="hooks/run-gate.mjs"
-sentence=" On Claude Code the plugin's Stop hook runs the same check and holds the first stop while a line is open."
+sentence=" On Claude Code the plugin's Stop hook runs the same check and holds the first stop while a line is open and no background agent or workflow is still running."
 
 fail() { echo "strip-run-gate: $*" >&2; exit 1; }
 
