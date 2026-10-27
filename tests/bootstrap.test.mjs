@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 import { cpSync, lstatSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const scripts = new URL("../plugins/pstack/skills/poteto-mode/scripts/", import.meta.url);
+const scripts = fileURLToPath(new URL("../plugins/pstack/skills/poteto-mode/scripts/", import.meta.url));
 const commands = ["orch/orch.ts", "watch-pr/watch-pr", "watch-pr/ship-pr"];
 
 function fingerprint(directory) {
