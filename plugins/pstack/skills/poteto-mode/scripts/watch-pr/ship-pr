@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-import { ensureDependenciesInstalled } from "../bootstrap.ts";
+import { main } from "./shipping-cli.ts";
 
-ensureDependenciesInstalled();
-const { main } = await import("./shipping-cli.ts");
 process.exitCode = await main(process.argv.slice(2));

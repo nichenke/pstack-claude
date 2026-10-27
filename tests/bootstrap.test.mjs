@@ -42,7 +42,7 @@ for (const command of commands) {
           stderr: "pipe",
         });
         expect(result.stderr.toString()).not.toContain("Cannot find package");
-        expect(result.exitCode).toBe(0);
+        expect(result.exitCode, result.stderr.toString()).toBe(0);
         expect(result.stdout.toString()).toContain("Usage:");
         expect(fingerprint(plugin)).toBe(before);
       }
@@ -51,3 +51,40 @@ for (const command of commands) {
     }
   }, 30000);
 }
+
+test("concurrent first calls and direct imports leave the plugin unchanged", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pstack-bootstrap-"));
+  try {
+    const plugin = join(root, "plugin");
+    cpSync(scripts, plugin, {
+      recursive: true,
+      filter: (source) => basename(source) !== "node_modules",
+    });
+    const before = fingerprint(plugin);
+    const env = { ...process.env, XDG_CACHE_HOME: join(root, "cache") };
+    const children = commands.map((command) => Bun.spawn(
+      [process.execPath, join(plugin, command), "--help"],
+      { env, cwd: root, stdout: "pipe", stderr: "pipe" },
+    ));
+    for (const child of children) {
+      const [status, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      expect(status, stderr).toBe(0);
+      expect(stdout).toContain("Usage:");
+    }
+    for (const module of ["orch/orch.ts", "watch-pr/cli.ts", "watch-pr/shipping-cli.ts"]) {
+      rmSync(join(root, "cache"), { recursive: true, force: true });
+      const result = Bun.spawnSync([
+        process.execPath, "--eval",
+        `const { main } = await import(${JSON.stringify(join(plugin, module))}); if (typeof main !== 'function') process.exit(1);`,
+      ], { env, cwd: root, stdout: "pipe", stderr: "pipe" });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+    }
+    expect(fingerprint(plugin)).toBe(before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 30000);

@@ -134,7 +134,7 @@
     },
     "plugins/pstack/skills/poteto-mode/scripts/bootstrap.ts": {
       "kind": "policy",
-      "why": "Exits with a clear message when run without bun and installs production dependencies only.",
+      "why": "Exits with a clear message when run without bun and loads Commander explicitly from an external cache keyed by package.json and bun.lock, publishing each install by atomic rename from its own staging directory so concurrent first calls leave the installed plugin unchanged.",
       "since": "0.9.11",
       "upstream": "not-proposed"
     },
@@ -164,7 +164,7 @@
     },
     "plugins/pstack/skills/poteto-mode/scripts/watch-pr/cli.ts": {
       "kind": "policy",
-      "why": "Threads one WatchDeadline through discovery, commands, and polling, reports a deadline verdict instead of throwing, rejects an --interval longer than one timer can sleep, and says in its help that --interval does not shorten the 60 second no-checks confirmation and that exit 0 from --status-only does not mean ready.",
+      "why": "Loads Commander through the external dependency cache, threads one WatchDeadline through discovery, commands, and polling, reports a deadline verdict instead of throwing, rejects an --interval longer than one timer can sleep, and says in its help that --interval does not shorten the 60 second no-checks confirmation and that exit 0 from --status-only does not mean ready.",
       "since": "0.9.24",
       "upstream": "not-proposed"
     },
@@ -202,6 +202,12 @@
       "kind": "policy",
       "why": "Renders the review-required, behind-base, and merge-blocked states as status cells and as merge-gate blockers with their next action, and shows a PR with no checks configured as a no-checks cell and a checks=none line on its READY verdict, with a first sighting as its own cell, WAITING line, and TIMEOUT line, and mergeability GitHub has not computed as its own Merge cell, WAITING line, and TIMEOUT line, words a retry after the PR changed mid-read as that and not as a failed query, and tells a caller whose command could not run to install it.",
       "since": "0.9.43",
+      "upstream": "not-proposed"
+    },
+    "plugins/pstack/skills/poteto-mode/scripts/watch-pr/watch-pr": {
+      "kind": "port-feature",
+      "why": "Imports the CLI directly because the CLI loads Commander through the external dependency cache.",
+      "since": "0.9.91",
       "upstream": "not-proposed"
     },
     "plugins/pstack/skills/poteto-mode/scripts/watch-pr/types.compile.ts": {
