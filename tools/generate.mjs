@@ -199,7 +199,19 @@ export function agentSkills(skillsDir) {
 }
 
 // Layout invariants that live outside any one skill.
+function validatePackagedFiles(pluginRoot, directory = pluginRoot) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    const name = relative(pluginRoot, path);
+    if (entry.isSymbolicLink()) throw new Error(`${name}: plugin packages cannot contain symlinks`);
+    if (entry.name === "node_modules") throw new Error(`${name}: install build dependencies outside the plugin`);
+    if (entry.isDirectory()) validatePackagedFiles(pluginRoot, path);
+    else if (!entry.isFile()) throw new Error(`${name}: unsupported plugin entry type`);
+  }
+}
+
 export function validatePluginLayout(pluginRoot) {
+  validatePackagedFiles(pluginRoot);
   // CHANGES 0.9.13 (#22): Claude Code lists a plugin's commands and its
   // user-invocable skills in the slash menu, so a command trampoline beside a
   // same-named skill shows twice. Trampolines live in a runtime's prompts

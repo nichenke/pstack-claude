@@ -965,7 +965,10 @@ describe("plan, changes, apply", () => {
     writeFileSync(outside, "#!/bin/sh\n", { mode: 0o755 });
     symlinkSync(outside, join(root, "plugins/pstack/hooks/linked.sh"));
     writeFileSync(join(root, hooks), text.replace("hooks/session-start.sh", "hooks/linked.sh"));
-    expect(problems(root)).toEqual([expect.stringContaining("hooks/linked.sh does not exist in the plugin")]);
+    expect(problems(root)).toEqual([
+      expect.stringContaining("hooks/linked.sh: plugin packages cannot contain symlinks"),
+      expect.stringContaining("hooks/linked.sh does not exist in the plugin"),
+    ]);
   });
 
   test("problems reports a root with no plugin directory, down to the last check, and does not throw", () => {

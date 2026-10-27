@@ -21,6 +21,9 @@ Each substitution rule in [`tools/substitutions.json`](tools/substitutions.json)
 
 ```shell
 bun tools/sync.mjs pstack <new-upstream-sha>
+bun tools/sync.mjs pstack-scripts <new-upstream-sha>
+bun install --frozen-lockfile --cwd tools/cli
+bun tools/build-cli.mjs
 ```
 
 `tools/upstream.json` pins the current upstream SHA per component; `tools/substitutions.json` holds the mechanical Cursor-to-Claude rewrites and a denylist of Cursor-isms that need a rewritten sentence rather than a token swap. A rewrite matches a literal `pattern` or a `regex`, optionally only in files whose upstream-relative path matches `files`, and carries a literal `replacement` and a `rationale`; a denylist entry is a literal `token` or a `regex`. Rewrites run in order, each on the output of the ones before it, so a pattern goes above any shorter pattern it contains. The tool fails on a rule in the reverse order, on an unknown field, and on a rule without exactly one matcher. Match a shape, such as a backticked model slug, rather than one version of it, so an upstream model bump needs no new rule. The tool fetches both upstream revisions and derives each upstream file into its port form: the substitutions, then `deriveSkill` in `tools/generate.mjs`. It sets a skill's or plugin agent's `name` to its directory or file name, drops the Cursor-only `mode`, `icon`, `color`, `reminder`, and `is_background` keys, and drops `disable-model-invocation` (or swaps it for `user-invocable: false` on a `principle-*` leaf). Then it applies the generator's stamps, appending a `## Models` section where upstream has none. It writes files whose only local differences came from upstream (new files included), deletes files upstream removed that the port never edited in text or mode, and runs `git merge-file` on the rest: a file the port forked that upstream left alone (its text or only its mode) is counted as forked and left alone, non-overlapping edits are merged and written, and a real conflict is written with git's `<<<<<<< local`, `=======`, and `>>>>>>> upstream` markers and listed with its hunk count. A written file takes upstream's file mode, except that a merged or conflicted file keeps the port's mode when upstream left the mode alone. Mode here means what git records, executable or not. A write grants no permission that the file's own bits or your umask withhold. A new file is created through the umask. An existing file changes only when its mode has to, and then only in its execute bits, which are set where the file is readable or all cleared. An upstream change to the executable bit alone is written too. Symlinks, upstream's or the port's at an upstream path or at a directory above one, and files upstream deleted that the port had edited join the same conflicts list under their own reason. A deleted file the port had edited stays, and prints under the pinned summary as now port-only, so the CHANGES.md entry can record that decision. The tool never follows or writes through a symlink on either side. An upstream link's target can sit outside the clone, and writing through a port link would change or create its target. A file that differs three ways cannot carry markers when upstream's or the port's copy is binary, so it fails the run with its path: replace it with upstream's version or add it to `exclude`, then rerun. A port path in the way of a file upstream writes also fails the run, before any write, with the port's path: a file where upstream has a directory, a directory where upstream has a file, or an entry spelled another way that the filesystem treats as the same name, as the default macOS filesystem does for case and Unicode normalisation. Rename or delete it, then rerun. Any denylist token in a written file, conflict markers included, fails the run with the file, line, and hint — add a substitution rule or rewrite the sentence, then rerun. A failed run writes nothing. The pin advances only on success, and a run with conflicts succeeds: the generator fails on any conflict-marker line under `plugins/pstack`, so resolve every hunk before you commit. Write the CHANGES.md entry from the printed report, then run the generator and the tests as usual.
@@ -55,10 +58,14 @@ To update, run `git pull --ff-only` in the checkout. The two tools pick up the c
 
 ## Before you open a PR
 
-Install the root dependencies, then run the generator and the tests:
+With Bun 1.3.14, install the build dependencies, then check the generated files and run the tests:
 
 ```shell
 bun install --frozen-lockfile
+cd tools/cli
+bun install --frozen-lockfile
+cd ../..
+bun tools/build-cli.mjs --check
 bun tools/generate.mjs
 bun test tests/
 ```
@@ -88,14 +95,22 @@ If you touched `plugins/pstack/pi/` or `pi-tools.md`, run the Pi checks against 
 
 If you touched `plugins/pstack/hooks/`, `copilot-tools.md`, or `setup-pstack`, run `tests/copilot-smoke.sh` against a signed-in `copilot` CLI. It installs the checkout into a throwaway `HOME` and `COPILOT_HOME`, spends about twenty premium requests, and skips when `copilot` is missing. Set `SMOKE_GITHUB=<owner>/<repo>@<ref>` to repeat the plugin-file checks on a GitHub marketplace install of a pushed ref.
 
-If you touched `skills/poteto-mode/scripts/`:
+The authored CLI and helper scripts live in `tools/cli`. The `pstack-scripts` sync component tracks their upstream subtree separately. The installed copies under `plugins/pstack/skills/poteto-mode/scripts` are generated. Do not install dependencies there, because Codex fingerprints the whole plugin when it checks hook trust.
+
+If you touched `tools/cli`, use Bun 1.3.14, the version CI uses to produce the committed bundles:
 
 ```shell
-cd plugins/pstack/skills/poteto-mode/scripts
+cd tools/cli
 bun install --frozen-lockfile
 bun run typecheck
 bun test orch watch-pr check-plan.test.ts
 bunx prettier@3.6.2 --check .
+cd ../..
+bun tools/build-cli.mjs
+bun tools/build-cli.mjs --check
+bun tools/generate.mjs --check
+bun test tests/cli-packaging.test.mjs
+cd tools/cli
 ```
 
 The scripts use Prettier 3.6.2 at upstream's settings in `.prettierrc.json`, CI runs the same check, and `.prettierignore` names each file the check skips and why.
@@ -130,7 +145,7 @@ uvx zizmor@1.29.0 --persona pedantic --min-severity low --collect all -- .
 
 ## Dependency updates
 
-Dependabot keeps the pinned action SHAs current. The vendored scripts' one runtime dependency (`commander`) follows upstream's pin and moves with `tools/sync.mjs`; `osv-scanner` scans every `bun.lock` weekly, so a CVE still surfaces. The root `bun.lock` pins `typebox`, which the generator and the Pi extension tests import. If you bump it by hand, run `bun install` and commit the resulting `bun.lock` in the same change.
+Dependabot keeps the pinned action SHAs current. The vendored scripts' `commander` dependency follows upstream's pin and moves with `tools/sync.mjs`; it is bundled into the installed commands and needs no runtime install. `osv-scanner` scans every `bun.lock` weekly, so a CVE still surfaces. The root `bun.lock` pins `typebox`, which the generator and the Pi extension tests import. If you bump it by hand, run `bun install` and commit the resulting `bun.lock` in the same change.
 
 ## Releasing
 

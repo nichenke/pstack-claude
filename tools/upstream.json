@@ -15,7 +15,7 @@
         "docs/",
         "plugin.json",
         "skills/make-bot-ui/",
-        "skills/poteto-mode/scripts/worktree-audit.sh"
+        "skills/poteto-mode/scripts/"
       ]
     },
     "cursor-team-kit": {
@@ -47,6 +47,15 @@
         "LICENSE",
         "README.md",
         "assets/"
+      ]
+    },
+    "pstack-scripts": {
+      "upstreamPath": "pstack/skills/poteto-mode/scripts",
+      "localPath": "tools/cli",
+      "sha": "99743e9c151c8537cbbf1f98bb38f34ef3368453",
+      "exclude": [
+        "bootstrap.ts",
+        "worktree-audit.sh"
       ]
     }
   }

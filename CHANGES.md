@@ -2,6 +2,12 @@
 
 This file is the release changelog, with one `## <version> - <title>` entry per release, newest first. The Cursor-to-Claude rewrite rules live in [`tools/substitutions.json`](tools/substitutions.json), and the [sync boundary](CONTRIBUTING.md#the-sync-boundary) in `CONTRIBUTING.md` defines how a change to upstream's skill content is declared.
 
+## 0.9.91 - CLI commands preserve Codex hook trust
+
+`orch`, `watch-pr`, and `ship-pr` no longer install dependencies inside the installed plugin. That installation changed the plugin fingerprint and invalidated Codex hook trust. A symlink in Bun's dependency cache also made Codex reject the plugin fingerprint entirely.
+
+The commands now ship as bundles that include `commander`, at their existing command paths. Authored scripts, tests, and development dependencies live under `tools/cli`, tracked by a separate upstream sync component. `tools/build-cli.mjs --check` checks the committed runtime files. The plugin validator rejects `node_modules`, symlinks, and other unsupported filesystem entries.
+
 ## 0.9.90 - the run gate holds only its own session's list, and not while background agents run
 
 Two false positives in the 0.9.89 Stop hook. The [2026-10-16 re-run](docs/analysis/2026-10-16-run-gate-eval-rerun-analysis.md) found concurrent sessions sharing one `todo.md`, because `open-run.mjs` answered a second session with `exists; left as is` and the hook then held each session on steps another owned. An interactive session that stopped to wait for background subagents was held on steps those subagents were still doing.

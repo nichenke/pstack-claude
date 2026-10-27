@@ -1,590 +1,119 @@
 #!/usr/bin/env bun
+// @bun
+/*
+(The MIT License)
 
-import { ensureDependenciesInstalled } from "../bootstrap.ts";
-import {
-  NotFoundError,
-  UsageError,
-  openStore,
-  parseVerdict,
-  type Counts,
-  type Forge,
-  type Frontier,
-  type InboxPointer,
-  type OpenGate,
-  type StandingLine,
-  type StatusReport,
-  type Store,
-  type Unit,
-  type Verdict,
-} from "./store.ts";
+Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca>
 
-ensureDependenciesInstalled();
-const {
-  Command: CommanderCommand,
-  CommanderError,
-  InvalidArgumentError,
-  Option,
-} = await import("commander");
-type Command = InstanceType<typeof CommanderCommand>;
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
 
-const DISPLAY_LIMIT = 4;
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
-interface Io {
-  readonly stdout: (value: string) => void;
-  readonly stderr: (value: string) => void;
-}
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+var S0=Object.create;var{getPrototypeOf:M0,defineProperty:R$,getOwnPropertyNames:P0}=Object;var K0=Object.prototype.hasOwnProperty;function L0($){return this[$]}var q0,I0,j0=($,J,z)=>{var Y=$!=null&&typeof $==="object";if(Y){var X=J?q0??=new WeakMap:I0??=new WeakMap,Z=X.get($);if(Z)return Z}z=$!=null?S0(M0($)):{};let G=J||!$||!$.__esModule?R$(z,"default",{value:$,enumerable:!0}):z;for(let H of P0($))if(!K0.call(G,H))R$(G,H,{get:L0.bind($,H),enumerable:!0});if(Y)X.set($,G);return G};var U=($,J)=>()=>(J||$((J={exports:{}}).exports,J),J.exports);var x=import.meta.require;var g=U((i0)=>{class M$ extends Error{constructor($,J,z){super(z);Error.captureStackTrace(this,this.constructor),this.name=this.constructor.name,this.code=J,this.exitCode=$,this.nestedError=void 0}}class l$ extends M${constructor($){super(1,"commander.invalidArgument",$);Error.captureStackTrace(this,this.constructor),this.name=this.constructor.name}}i0.CommanderError=M$;i0.InvalidArgumentError=l$});var a=U((o0)=>{var{InvalidArgumentError:t0}=g();class p${constructor($,J){switch(this.description=J||"",this.variadic=!1,this.parseArg=void 0,this.defaultValue=void 0,this.defaultValueDescription=void 0,this.argChoices=void 0,$[0]){case"<":this.required=!0,this._name=$.slice(1,-1);break;case"[":this.required=!1,this._name=$.slice(1,-1);break;default:this.required=!0,this._name=$;break}if(this._name.length>3&&this._name.slice(-3)==="...")this.variadic=!0,this._name=this._name.slice(0,-3)}name(){return this._name}_concatValue($,J){if(J===this.defaultValue||!Array.isArray(J))return[$];return J.concat($)}default($,J){return this.defaultValue=$,this.defaultValueDescription=J,this}argParser($){return this.parseArg=$,this}choices($){return this.argChoices=$.slice(),this.parseArg=(J,z)=>{if(!this.argChoices.includes(J))throw new t0(`Allowed choices are ${this.argChoices.join(", ")}.`);if(this.variadic)return this._concatValue(J,z);return J},this}argRequired(){return this.required=!0,this}argOptional(){return this.required=!1,this}}function a0($){let J=$.name()+($.variadic===!0?"...":"");return $.required?"<"+J+">":"["+J+"]"}o0.Argument=p$;o0.humanReadableArgName=a0});var P$=U((J1)=>{var{humanReadableArgName:$1}=a();class i${constructor(){this.helpWidth=void 0,this.minWidthToWrap=40,this.sortSubcommands=!1,this.sortOptions=!1,this.showGlobalOptions=!1}prepareContext($){this.helpWidth=this.helpWidth??$.helpWidth??80}visibleCommands($){let J=$.commands.filter((Y)=>!Y._hidden),z=$._getHelpCommand();if(z&&!z._hidden)J.push(z);if(this.sortSubcommands)J.sort((Y,X)=>{return Y.name().localeCompare(X.name())});return J}compareOptions($,J){let z=(Y)=>{return Y.short?Y.short.replace(/^-/,""):Y.long.replace(/^--/,"")};return z($).localeCompare(z(J))}visibleOptions($){let J=$.options.filter((Y)=>!Y.hidden),z=$._getHelpOption();if(z&&!z.hidden){let Y=z.short&&$._findOption(z.short),X=z.long&&$._findOption(z.long);if(!Y&&!X)J.push(z);else if(z.long&&!X)J.push($.createOption(z.long,z.description));else if(z.short&&!Y)J.push($.createOption(z.short,z.description))}if(this.sortOptions)J.sort(this.compareOptions);return J}visibleGlobalOptions($){if(!this.showGlobalOptions)return[];let J=[];for(let z=$.parent;z;z=z.parent){let Y=z.options.filter((X)=>!X.hidden);J.push(...Y)}if(this.sortOptions)J.sort(this.compareOptions);return J}visibleArguments($){if($._argsDescription)$.registeredArguments.forEach((J)=>{J.description=J.description||$._argsDescription[J.name()]||""});if($.registeredArguments.find((J)=>J.description))return $.registeredArguments;return[]}subcommandTerm($){let J=$.registeredArguments.map((z)=>$1(z)).join(" ");return $._name+($._aliases[0]?"|"+$._aliases[0]:"")+($.options.length?" [options]":"")+(J?" "+J:"")}optionTerm($){return $.flags}argumentTerm($){return $.name()}longestSubcommandTermLength($,J){return J.visibleCommands($).reduce((z,Y)=>{return Math.max(z,this.displayWidth(J.styleSubcommandTerm(J.subcommandTerm(Y))))},0)}longestOptionTermLength($,J){return J.visibleOptions($).reduce((z,Y)=>{return Math.max(z,this.displayWidth(J.styleOptionTerm(J.optionTerm(Y))))},0)}longestGlobalOptionTermLength($,J){return J.visibleGlobalOptions($).reduce((z,Y)=>{return Math.max(z,this.displayWidth(J.styleOptionTerm(J.optionTerm(Y))))},0)}longestArgumentTermLength($,J){return J.visibleArguments($).reduce((z,Y)=>{return Math.max(z,this.displayWidth(J.styleArgumentTerm(J.argumentTerm(Y))))},0)}commandUsage($){let J=$._name;if($._aliases[0])J=J+"|"+$._aliases[0];let z="";for(let Y=$.parent;Y;Y=Y.parent)z=Y.name()+" "+z;return z+J+" "+$.usage()}commandDescription($){return $.description()}subcommandDescription($){return $.summary()||$.description()}optionDescription($){let J=[];if($.argChoices)J.push(`choices: ${$.argChoices.map((z)=>JSON.stringify(z)).join(", ")}`);if($.defaultValue!==void 0){if($.required||$.optional||$.isBoolean()&&typeof $.defaultValue==="boolean")J.push(`default: ${$.defaultValueDescription||JSON.stringify($.defaultValue)}`)}if($.presetArg!==void 0&&$.optional)J.push(`preset: ${JSON.stringify($.presetArg)}`);if($.envVar!==void 0)J.push(`env: ${$.envVar}`);if(J.length>0){let z=`(${J.join(", ")})`;if($.description)return`${$.description} ${z}`;return z}return $.description}argumentDescription($){let J=[];if($.argChoices)J.push(`choices: ${$.argChoices.map((z)=>JSON.stringify(z)).join(", ")}`);if($.defaultValue!==void 0)J.push(`default: ${$.defaultValueDescription||JSON.stringify($.defaultValue)}`);if(J.length>0){let z=`(${J.join(", ")})`;if($.description)return`${$.description} ${z}`;return z}return $.description}formatItemList($,J,z){if(J.length===0)return[];return[z.styleTitle($),...J,""]}groupItems($,J,z){let Y=new Map;return $.forEach((X)=>{let Z=z(X);if(!Y.has(Z))Y.set(Z,[])}),J.forEach((X)=>{let Z=z(X);if(!Y.has(Z))Y.set(Z,[]);Y.get(Z).push(X)}),Y}formatHelp($,J){let z=J.padWidth($,J),Y=J.helpWidth??80;function X(Q,_){return J.formatItem(Q,z,_,J)}let Z=[`${J.styleTitle("Usage:")} ${J.styleUsage(J.commandUsage($))}`,""],G=J.commandDescription($);if(G.length>0)Z=Z.concat([J.boxWrap(J.styleCommandDescription(G),Y),""]);let H=J.visibleArguments($).map((Q)=>{return X(J.styleArgumentTerm(J.argumentTerm(Q)),J.styleArgumentDescription(J.argumentDescription(Q)))});if(Z=Z.concat(this.formatItemList("Arguments:",H,J)),this.groupItems($.options,J.visibleOptions($),(Q)=>Q.helpGroupHeading??"Options:").forEach((Q,_)=>{let S=Q.map((M)=>{return X(J.styleOptionTerm(J.optionTerm(M)),J.styleOptionDescription(J.optionDescription(M)))});Z=Z.concat(this.formatItemList(_,S,J))}),J.showGlobalOptions){let Q=J.visibleGlobalOptions($).map((_)=>{return X(J.styleOptionTerm(J.optionTerm(_)),J.styleOptionDescription(J.optionDescription(_)))});Z=Z.concat(this.formatItemList("Global Options:",Q,J))}return this.groupItems($.commands,J.visibleCommands($),(Q)=>Q.helpGroup()||"Commands:").forEach((Q,_)=>{let S=Q.map((M)=>{return X(J.styleSubcommandTerm(J.subcommandTerm(M)),J.styleSubcommandDescription(J.subcommandDescription(M)))});Z=Z.concat(this.formatItemList(_,S,J))}),Z.join(`
+`)}displayWidth($){return n$($).length}styleTitle($){return $}styleUsage($){return $.split(" ").map((J)=>{if(J==="[options]")return this.styleOptionText(J);if(J==="[command]")return this.styleSubcommandText(J);if(J[0]==="["||J[0]==="<")return this.styleArgumentText(J);return this.styleCommandText(J)}).join(" ")}styleCommandDescription($){return this.styleDescriptionText($)}styleOptionDescription($){return this.styleDescriptionText($)}styleSubcommandDescription($){return this.styleDescriptionText($)}styleArgumentDescription($){return this.styleDescriptionText($)}styleDescriptionText($){return $}styleOptionTerm($){return this.styleOptionText($)}styleSubcommandTerm($){return $.split(" ").map((J)=>{if(J==="[options]")return this.styleOptionText(J);if(J[0]==="["||J[0]==="<")return this.styleArgumentText(J);return this.styleSubcommandText(J)}).join(" ")}styleArgumentTerm($){return this.styleArgumentText($)}styleOptionText($){return $}styleArgumentText($){return $}styleSubcommandText($){return $}styleCommandText($){return $}padWidth($,J){return Math.max(J.longestOptionTermLength($,J),J.longestGlobalOptionTermLength($,J),J.longestSubcommandTermLength($,J),J.longestArgumentTermLength($,J))}preformatted($){return/\n[^\S\r\n]/.test($)}formatItem($,J,z,Y){let Z=" ".repeat(2);if(!z)return Z+$;let G=$.padEnd(J+$.length-Y.displayWidth($)),H=2,T=(this.helpWidth??80)-J-H-2,Q;if(T<this.minWidthToWrap||Y.preformatted(z))Q=z;else Q=Y.boxWrap(z,T).replace(/\n/g,`
+`+" ".repeat(J+H));return Z+G+" ".repeat(H)+Q.replace(/\n/g,`
+${Z}`)}boxWrap($,J){if(J<this.minWidthToWrap)return $;let z=$.split(/\r\n|\n/),Y=/[\s]*[^\s]+/g,X=[];return z.forEach((Z)=>{let G=Z.match(Y);if(G===null){X.push("");return}let H=[G.shift()],B=this.displayWidth(H[0]);G.forEach((T)=>{let Q=this.displayWidth(T);if(B+Q<=J){H.push(T),B+=Q;return}X.push(H.join(""));let _=T.trimStart();H=[_],B=this.displayWidth(_)}),X.push(H.join(""))}),X.join(`
+`)}}function n$($){let J=/\x1b\[\d*(;\d*)*m/g;return $.replace(J,"")}J1.Help=i$;J1.stripColor=n$});var K$=U((T1)=>{var{InvalidArgumentError:X1}=g();class t${constructor($,J){this.flags=$,this.description=J||"",this.required=$.includes("<"),this.optional=$.includes("["),this.variadic=/\w\.\.\.[>\]]$/.test($),this.mandatory=!1;let z=Z1($);if(this.short=z.shortFlag,this.long=z.longFlag,this.negate=!1,this.long)this.negate=this.long.startsWith("--no-");this.defaultValue=void 0,this.defaultValueDescription=void 0,this.presetArg=void 0,this.envVar=void 0,this.parseArg=void 0,this.hidden=!1,this.argChoices=void 0,this.conflictsWith=[],this.implied=void 0,this.helpGroupHeading=void 0}default($,J){return this.defaultValue=$,this.defaultValueDescription=J,this}preset($){return this.presetArg=$,this}conflicts($){return this.conflictsWith=this.conflictsWith.concat($),this}implies($){let J=$;if(typeof $==="string")J={[$]:!0};return this.implied=Object.assign(this.implied||{},J),this}env($){return this.envVar=$,this}argParser($){return this.parseArg=$,this}makeOptionMandatory($=!0){return this.mandatory=!!$,this}hideHelp($=!0){return this.hidden=!!$,this}_concatValue($,J){if(J===this.defaultValue||!Array.isArray(J))return[$];return J.concat($)}choices($){return this.argChoices=$.slice(),this.parseArg=(J,z)=>{if(!this.argChoices.includes(J))throw new X1(`Allowed choices are ${this.argChoices.join(", ")}.`);if(this.variadic)return this._concatValue(J,z);return J},this}name(){if(this.long)return this.long.replace(/^--/,"");return this.short.replace(/^-/,"")}attributeName(){if(this.negate)return s$(this.name().replace(/^no-/,""));return s$(this.name())}helpGroup($){return this.helpGroupHeading=$,this}is($){return this.short===$||this.long===$}isBoolean(){return!this.required&&!this.optional&&!this.negate}}class a${constructor($){this.positiveOptions=new Map,this.negativeOptions=new Map,this.dualOptions=new Set,$.forEach((J)=>{if(J.negate)this.negativeOptions.set(J.attributeName(),J);else this.positiveOptions.set(J.attributeName(),J)}),this.negativeOptions.forEach((J,z)=>{if(this.positiveOptions.has(z))this.dualOptions.add(z)})}valueFromOption($,J){let z=J.attributeName();if(!this.dualOptions.has(z))return!0;let Y=this.negativeOptions.get(z).presetArg,X=Y!==void 0?Y:!1;return J.negate===(X===$)}}function s$($){return $.split("-").reduce((J,z)=>{return J+z[0].toUpperCase()+z.slice(1)})}function Z1($){let J,z,Y=/^-[^-]$/,X=/^--[^-]/,Z=$.split(/[ |,]+/).concat("guard");if(Y.test(Z[0]))J=Z.shift();if(X.test(Z[0]))z=Z.shift();if(!J&&Y.test(Z[0]))J=Z.shift();if(!J&&X.test(Z[0]))J=z,z=Z.shift();if(Z[0].startsWith("-")){let G=Z[0],H=`option creation failed due to '${G}' in option flags '${$}'`;if(/^-[^-][^-]/.test(G))throw Error(`${H}
+- a short flag is a single dash and a single character
+  - either use a single dash and a single character (for a short flag)
+  - or use a double dash for a long option (and can have two, like '--ws, --workspace')`);if(Y.test(G))throw Error(`${H}
+- too many short flags`);if(X.test(G))throw Error(`${H}
+- too many long flags`);throw Error(`${H}
+- unrecognised flag format`)}if(J===void 0&&z===void 0)throw Error(`option creation failed due to no flags found in '${$}'.`);return{shortFlag:J,longFlag:z}}T1.Option=t$;T1.DualOptions=a$});var o$=U((_1)=>{function B1($,J){if(Math.abs($.length-J.length)>3)return Math.max($.length,J.length);let z=[];for(let Y=0;Y<=$.length;Y++)z[Y]=[Y];for(let Y=0;Y<=J.length;Y++)z[0][Y]=Y;for(let Y=1;Y<=J.length;Y++)for(let X=1;X<=$.length;X++){let Z=1;if($[X-1]===J[Y-1])Z=0;else Z=1;if(z[X][Y]=Math.min(z[X-1][Y]+1,z[X][Y-1]+1,z[X-1][Y-1]+Z),X>1&&Y>1&&$[X-1]===J[Y-2]&&$[X-2]===J[Y-1])z[X][Y]=Math.min(z[X][Y],z[X-2][Y-2]+1)}return z[$.length][J.length]}function H1($,J){if(!J||J.length===0)return"";J=Array.from(new Set(J));let z=$.startsWith("--");if(z)$=$.slice(2),J=J.map((G)=>G.slice(2));let Y=[],X=3,Z=0.4;if(J.forEach((G)=>{if(G.length<=1)return;let H=B1($,G),B=Math.max($.length,G.length);if((B-H)/B>Z){if(H<X)X=H,Y=[G];else if(H===X)Y.push(G)}}),Y.sort((G,H)=>G.localeCompare(H)),z)Y=Y.map((G)=>`--${G}`);if(Y.length>1)return`
+(Did you mean one of ${Y.join(", ")}?)`;if(Y.length===1)return`
+(Did you mean ${Y[0]}?)`;return""}_1.suggestSimilar=H1});var J0=U((j1)=>{var M1=x("events").EventEmitter,L$=x("child_process"),y=x("path"),o=x("fs"),K=x("process"),{Argument:P1,humanReadableArgName:K1}=a(),{CommanderError:q$}=g(),{Help:L1,stripColor:q1}=P$(),{Option:r$,DualOptions:I1}=K$(),{suggestSimilar:e$}=o$();class j$ extends M1{constructor($){super();this.commands=[],this.options=[],this.parent=null,this._allowUnknownOption=!1,this._allowExcessArguments=!1,this.registeredArguments=[],this._args=this.registeredArguments,this.args=[],this.rawArgs=[],this.processedArgs=[],this._scriptPath=null,this._name=$||"",this._optionValues={},this._optionValueSources={},this._storeOptionsAsProperties=!1,this._actionHandler=null,this._executableHandler=!1,this._executableFile=null,this._executableDir=null,this._defaultCommandName=null,this._exitCallback=null,this._aliases=[],this._combineFlagAndOptionalValue=!0,this._description="",this._summary="",this._argsDescription=void 0,this._enablePositionalOptions=!1,this._passThroughOptions=!1,this._lifeCycleHooks={},this._showHelpAfterError=!1,this._showSuggestionAfterError=!0,this._savedState=null,this._outputConfiguration={writeOut:(J)=>K.stdout.write(J),writeErr:(J)=>K.stderr.write(J),outputError:(J,z)=>z(J),getOutHelpWidth:()=>K.stdout.isTTY?K.stdout.columns:void 0,getErrHelpWidth:()=>K.stderr.isTTY?K.stderr.columns:void 0,getOutHasColors:()=>I$()??(K.stdout.isTTY&&K.stdout.hasColors?.()),getErrHasColors:()=>I$()??(K.stderr.isTTY&&K.stderr.hasColors?.()),stripColor:(J)=>q1(J)},this._hidden=!1,this._helpOption=void 0,this._addImplicitHelpCommand=void 0,this._helpCommand=void 0,this._helpConfiguration={},this._helpGroupHeading=void 0,this._defaultCommandGroup=void 0,this._defaultOptionGroup=void 0}copyInheritedSettings($){return this._outputConfiguration=$._outputConfiguration,this._helpOption=$._helpOption,this._helpCommand=$._helpCommand,this._helpConfiguration=$._helpConfiguration,this._exitCallback=$._exitCallback,this._storeOptionsAsProperties=$._storeOptionsAsProperties,this._combineFlagAndOptionalValue=$._combineFlagAndOptionalValue,this._allowExcessArguments=$._allowExcessArguments,this._enablePositionalOptions=$._enablePositionalOptions,this._showHelpAfterError=$._showHelpAfterError,this._showSuggestionAfterError=$._showSuggestionAfterError,this}_getCommandAndAncestors(){let $=[];for(let J=this;J;J=J.parent)$.push(J);return $}command($,J,z){let Y=J,X=z;if(typeof Y==="object"&&Y!==null)X=Y,Y=null;X=X||{};let[,Z,G]=$.match(/([^ ]+) *(.*)/),H=this.createCommand(Z);if(Y)H.description(Y),H._executableHandler=!0;if(X.isDefault)this._defaultCommandName=H._name;if(H._hidden=!!(X.noHelp||X.hidden),H._executableFile=X.executableFile||null,G)H.arguments(G);if(this._registerCommand(H),H.parent=this,H.copyInheritedSettings(this),Y)return this;return H}createCommand($){return new j$($)}createHelp(){return Object.assign(new L1,this.configureHelp())}configureHelp($){if($===void 0)return this._helpConfiguration;return this._helpConfiguration=$,this}configureOutput($){if($===void 0)return this._outputConfiguration;return this._outputConfiguration=Object.assign({},this._outputConfiguration,$),this}showHelpAfterError($=!0){if(typeof $!=="string")$=!!$;return this._showHelpAfterError=$,this}showSuggestionAfterError($=!0){return this._showSuggestionAfterError=!!$,this}addCommand($,J){if(!$._name)throw Error(`Command passed to .addCommand() must have a name
+- specify the name in Command constructor or using .name()`);if(J=J||{},J.isDefault)this._defaultCommandName=$._name;if(J.noHelp||J.hidden)$._hidden=!0;return this._registerCommand($),$.parent=this,$._checkForBrokenPassThrough(),this}createArgument($,J){return new P1($,J)}argument($,J,z,Y){let X=this.createArgument($,J);if(typeof z==="function")X.default(Y).argParser(z);else X.default(z);return this.addArgument(X),this}arguments($){return $.trim().split(/ +/).forEach((J)=>{this.argument(J)}),this}addArgument($){let J=this.registeredArguments.slice(-1)[0];if(J&&J.variadic)throw Error(`only the last argument can be variadic '${J.name()}'`);if($.required&&$.defaultValue!==void 0&&$.parseArg===void 0)throw Error(`a default value for a required argument is never used: '${$.name()}'`);return this.registeredArguments.push($),this}helpCommand($,J){if(typeof $==="boolean"){if(this._addImplicitHelpCommand=$,$&&this._defaultCommandGroup)this._initCommandGroup(this._getHelpCommand());return this}let z=$??"help [command]",[,Y,X]=z.match(/([^ ]+) *(.*)/),Z=J??"display help for command",G=this.createCommand(Y);if(G.helpOption(!1),X)G.arguments(X);if(Z)G.description(Z);if(this._addImplicitHelpCommand=!0,this._helpCommand=G,$||J)this._initCommandGroup(G);return this}addHelpCommand($,J){if(typeof $!=="object")return this.helpCommand($,J),this;return this._addImplicitHelpCommand=!0,this._helpCommand=$,this._initCommandGroup($),this}_getHelpCommand(){if(this._addImplicitHelpCommand??(this.commands.length&&!this._actionHandler&&!this._findCommand("help"))){if(this._helpCommand===void 0)this.helpCommand(void 0,void 0);return this._helpCommand}return null}hook($,J){let z=["preSubcommand","preAction","postAction"];if(!z.includes($))throw Error(`Unexpected value for event passed to hook : '${$}'.
+Expecting one of '${z.join("', '")}'`);if(this._lifeCycleHooks[$])this._lifeCycleHooks[$].push(J);else this._lifeCycleHooks[$]=[J];return this}exitOverride($){if($)this._exitCallback=$;else this._exitCallback=(J)=>{if(J.code!=="commander.executeSubCommandAsync")throw J};return this}_exit($,J,z){if(this._exitCallback)this._exitCallback(new q$($,J,z));K.exit($)}action($){let J=(z)=>{let Y=this.registeredArguments.length,X=z.slice(0,Y);if(this._storeOptionsAsProperties)X[Y]=this;else X[Y]=this.opts();return X.push(this),$.apply(this,X)};return this._actionHandler=J,this}createOption($,J){return new r$($,J)}_callParseArg($,J,z,Y){try{return $.parseArg(J,z)}catch(X){if(X.code==="commander.invalidArgument"){let Z=`${Y} ${X.message}`;this.error(Z,{exitCode:X.exitCode,code:X.code})}throw X}}_registerOption($){let J=$.short&&this._findOption($.short)||$.long&&this._findOption($.long);if(J){let z=$.long&&this._findOption($.long)?$.long:$.short;throw Error(`Cannot add option '${$.flags}'${this._name&&` to command '${this._name}'`} due to conflicting flag '${z}'
+-  already used by option '${J.flags}'`)}this._initOptionGroup($),this.options.push($)}_registerCommand($){let J=(Y)=>{return[Y.name()].concat(Y.aliases())},z=J($).find((Y)=>this._findCommand(Y));if(z){let Y=J(this._findCommand(z)).join("|"),X=J($).join("|");throw Error(`cannot add command '${X}' as already have command '${Y}'`)}this._initCommandGroup($),this.commands.push($)}addOption($){this._registerOption($);let J=$.name(),z=$.attributeName();if($.negate){let X=$.long.replace(/^--no-/,"--");if(!this._findOption(X))this.setOptionValueWithSource(z,$.defaultValue===void 0?!0:$.defaultValue,"default")}else if($.defaultValue!==void 0)this.setOptionValueWithSource(z,$.defaultValue,"default");let Y=(X,Z,G)=>{if(X==null&&$.presetArg!==void 0)X=$.presetArg;let H=this.getOptionValue(z);if(X!==null&&$.parseArg)X=this._callParseArg($,X,H,Z);else if(X!==null&&$.variadic)X=$._concatValue(X,H);if(X==null)if($.negate)X=!1;else if($.isBoolean()||$.optional)X=!0;else X="";this.setOptionValueWithSource(z,X,G)};if(this.on("option:"+J,(X)=>{let Z=`error: option '${$.flags}' argument '${X}' is invalid.`;Y(X,Z,"cli")}),$.envVar)this.on("optionEnv:"+J,(X)=>{let Z=`error: option '${$.flags}' value '${X}' from env '${$.envVar}' is invalid.`;Y(X,Z,"env")});return this}_optionEx($,J,z,Y,X){if(typeof J==="object"&&J instanceof r$)throw Error("To add an Option object use addOption() instead of option() or requiredOption()");let Z=this.createOption(J,z);if(Z.makeOptionMandatory(!!$.mandatory),typeof Y==="function")Z.default(X).argParser(Y);else if(Y instanceof RegExp){let G=Y;Y=(H,B)=>{let T=G.exec(H);return T?T[0]:B},Z.default(X).argParser(Y)}else Z.default(Y);return this.addOption(Z)}option($,J,z,Y){return this._optionEx({},$,J,z,Y)}requiredOption($,J,z,Y){return this._optionEx({mandatory:!0},$,J,z,Y)}combineFlagAndOptionalValue($=!0){return this._combineFlagAndOptionalValue=!!$,this}allowUnknownOption($=!0){return this._allowUnknownOption=!!$,this}allowExcessArguments($=!0){return this._allowExcessArguments=!!$,this}enablePositionalOptions($=!0){return this._enablePositionalOptions=!!$,this}passThroughOptions($=!0){return this._passThroughOptions=!!$,this._checkForBrokenPassThrough(),this}_checkForBrokenPassThrough(){if(this.parent&&this._passThroughOptions&&!this.parent._enablePositionalOptions)throw Error(`passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`)}storeOptionsAsProperties($=!0){if(this.options.length)throw Error("call .storeOptionsAsProperties() before adding options");if(Object.keys(this._optionValues).length)throw Error("call .storeOptionsAsProperties() before setting option values");return this._storeOptionsAsProperties=!!$,this}getOptionValue($){if(this._storeOptionsAsProperties)return this[$];return this._optionValues[$]}setOptionValue($,J){return this.setOptionValueWithSource($,J,void 0)}setOptionValueWithSource($,J,z){if(this._storeOptionsAsProperties)this[$]=J;else this._optionValues[$]=J;return this._optionValueSources[$]=z,this}getOptionValueSource($){return this._optionValueSources[$]}getOptionValueSourceWithGlobals($){let J;return this._getCommandAndAncestors().forEach((z)=>{if(z.getOptionValueSource($)!==void 0)J=z.getOptionValueSource($)}),J}_prepareUserArgs($,J){if($!==void 0&&!Array.isArray($))throw Error("first parameter to parse must be array or undefined");if(J=J||{},$===void 0&&J.from===void 0){if(K.versions?.electron)J.from="electron";let Y=K.execArgv??[];if(Y.includes("-e")||Y.includes("--eval")||Y.includes("-p")||Y.includes("--print"))J.from="eval"}if($===void 0)$=K.argv;this.rawArgs=$.slice();let z;switch(J.from){case void 0:case"node":this._scriptPath=$[1],z=$.slice(2);break;case"electron":if(K.defaultApp)this._scriptPath=$[1],z=$.slice(2);else z=$.slice(1);break;case"user":z=$.slice(0);break;case"eval":z=$.slice(1);break;default:throw Error(`unexpected parse option { from: '${J.from}' }`)}if(!this._name&&this._scriptPath)this.nameFromFilename(this._scriptPath);return this._name=this._name||"program",z}parse($,J){this._prepareForParse();let z=this._prepareUserArgs($,J);return this._parseCommand([],z),this}async parseAsync($,J){this._prepareForParse();let z=this._prepareUserArgs($,J);return await this._parseCommand([],z),this}_prepareForParse(){if(this._savedState===null)this.saveStateBeforeParse();else this.restoreStateBeforeParse()}saveStateBeforeParse(){this._savedState={_name:this._name,_optionValues:{...this._optionValues},_optionValueSources:{...this._optionValueSources}}}restoreStateBeforeParse(){if(this._storeOptionsAsProperties)throw Error(`Can not call parse again when storeOptionsAsProperties is true.
+- either make a new Command for each call to parse, or stop storing options as properties`);this._name=this._savedState._name,this._scriptPath=null,this.rawArgs=[],this._optionValues={...this._savedState._optionValues},this._optionValueSources={...this._savedState._optionValueSources},this.args=[],this.processedArgs=[]}_checkForMissingExecutable($,J,z){if(o.existsSync($))return;let Y=J?`searched for local subcommand relative to directory '${J}'`:"no directory for search for local subcommand, use .executableDir() to supply a custom directory",X=`'${$}' does not exist
+ - if '${z}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
+ - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
+ - ${Y}`;throw Error(X)}_executeSubCommand($,J){J=J.slice();let z=!1,Y=[".js",".ts",".tsx",".mjs",".cjs"];function X(T,Q){let _=y.resolve(T,Q);if(o.existsSync(_))return _;if(Y.includes(y.extname(Q)))return;let S=Y.find((M)=>o.existsSync(`${_}${M}`));if(S)return`${_}${S}`;return}this._checkForMissingMandatoryOptions(),this._checkForConflictingOptions();let Z=$._executableFile||`${this._name}-${$._name}`,G=this._executableDir||"";if(this._scriptPath){let T;try{T=o.realpathSync(this._scriptPath)}catch{T=this._scriptPath}G=y.resolve(y.dirname(T),G)}if(G){let T=X(G,Z);if(!T&&!$._executableFile&&this._scriptPath){let Q=y.basename(this._scriptPath,y.extname(this._scriptPath));if(Q!==this._name)T=X(G,`${Q}-${$._name}`)}Z=T||Z}z=Y.includes(y.extname(Z));let H;if(K.platform!=="win32")if(z)J.unshift(Z),J=$0(K.execArgv).concat(J),H=L$.spawn(K.argv[0],J,{stdio:"inherit"});else H=L$.spawn(Z,J,{stdio:"inherit"});else this._checkForMissingExecutable(Z,G,$._name),J.unshift(Z),J=$0(K.execArgv).concat(J),H=L$.spawn(K.execPath,J,{stdio:"inherit"});if(!H.killed)["SIGUSR1","SIGUSR2","SIGTERM","SIGINT","SIGHUP"].forEach((Q)=>{K.on(Q,()=>{if(H.killed===!1&&H.exitCode===null)H.kill(Q)})});let B=this._exitCallback;H.on("close",(T)=>{if(T=T??1,!B)K.exit(T);else B(new q$(T,"commander.executeSubCommandAsync","(close)"))}),H.on("error",(T)=>{if(T.code==="ENOENT")this._checkForMissingExecutable(Z,G,$._name);else if(T.code==="EACCES")throw Error(`'${Z}' not executable`);if(!B)K.exit(1);else{let Q=new q$(1,"commander.executeSubCommandAsync","(error)");Q.nestedError=T,B(Q)}}),this.runningCommand=H}_dispatchSubcommand($,J,z){let Y=this._findCommand($);if(!Y)this.help({error:!0});Y._prepareForParse();let X;return X=this._chainOrCallSubCommandHook(X,Y,"preSubcommand"),X=this._chainOrCall(X,()=>{if(Y._executableHandler)this._executeSubCommand(Y,J.concat(z));else return Y._parseCommand(J,z)}),X}_dispatchHelpCommand($){if(!$)this.help();let J=this._findCommand($);if(J&&!J._executableHandler)J.help();return this._dispatchSubcommand($,[],[this._getHelpOption()?.long??this._getHelpOption()?.short??"--help"])}_checkNumberOfArguments(){if(this.registeredArguments.forEach(($,J)=>{if($.required&&this.args[J]==null)this.missingArgument($.name())}),this.registeredArguments.length>0&&this.registeredArguments[this.registeredArguments.length-1].variadic)return;if(this.args.length>this.registeredArguments.length)this._excessArguments(this.args)}_processArguments(){let $=(z,Y,X)=>{let Z=Y;if(Y!==null&&z.parseArg){let G=`error: command-argument value '${Y}' is invalid for argument '${z.name()}'.`;Z=this._callParseArg(z,Y,X,G)}return Z};this._checkNumberOfArguments();let J=[];this.registeredArguments.forEach((z,Y)=>{let X=z.defaultValue;if(z.variadic){if(Y<this.args.length){if(X=this.args.slice(Y),z.parseArg)X=X.reduce((Z,G)=>{return $(z,G,Z)},z.defaultValue)}else if(X===void 0)X=[]}else if(Y<this.args.length){if(X=this.args[Y],z.parseArg)X=$(z,X,z.defaultValue)}J[Y]=X}),this.processedArgs=J}_chainOrCall($,J){if($&&$.then&&typeof $.then==="function")return $.then(()=>J());return J()}_chainOrCallHooks($,J){let z=$,Y=[];if(this._getCommandAndAncestors().reverse().filter((X)=>X._lifeCycleHooks[J]!==void 0).forEach((X)=>{X._lifeCycleHooks[J].forEach((Z)=>{Y.push({hookedCommand:X,callback:Z})})}),J==="postAction")Y.reverse();return Y.forEach((X)=>{z=this._chainOrCall(z,()=>{return X.callback(X.hookedCommand,this)})}),z}_chainOrCallSubCommandHook($,J,z){let Y=$;if(this._lifeCycleHooks[z]!==void 0)this._lifeCycleHooks[z].forEach((X)=>{Y=this._chainOrCall(Y,()=>{return X(this,J)})});return Y}_parseCommand($,J){let z=this.parseOptions(J);if(this._parseOptionsEnv(),this._parseOptionsImplied(),$=$.concat(z.operands),J=z.unknown,this.args=$.concat(J),$&&this._findCommand($[0]))return this._dispatchSubcommand($[0],$.slice(1),J);if(this._getHelpCommand()&&$[0]===this._getHelpCommand().name())return this._dispatchHelpCommand($[1]);if(this._defaultCommandName)return this._outputHelpIfRequested(J),this._dispatchSubcommand(this._defaultCommandName,$,J);if(this.commands.length&&this.args.length===0&&!this._actionHandler&&!this._defaultCommandName)this.help({error:!0});this._outputHelpIfRequested(z.unknown),this._checkForMissingMandatoryOptions(),this._checkForConflictingOptions();let Y=()=>{if(z.unknown.length>0)this.unknownOption(z.unknown[0])},X=`command:${this.name()}`;if(this._actionHandler){Y(),this._processArguments();let Z;if(Z=this._chainOrCallHooks(Z,"preAction"),Z=this._chainOrCall(Z,()=>this._actionHandler(this.processedArgs)),this.parent)Z=this._chainOrCall(Z,()=>{this.parent.emit(X,$,J)});return Z=this._chainOrCallHooks(Z,"postAction"),Z}if(this.parent&&this.parent.listenerCount(X))Y(),this._processArguments(),this.parent.emit(X,$,J);else if($.length){if(this._findCommand("*"))return this._dispatchSubcommand("*",$,J);if(this.listenerCount("command:*"))this.emit("command:*",$,J);else if(this.commands.length)this.unknownCommand();else Y(),this._processArguments()}else if(this.commands.length)Y(),this.help({error:!0});else Y(),this._processArguments()}_findCommand($){if(!$)return;return this.commands.find((J)=>J._name===$||J._aliases.includes($))}_findOption($){return this.options.find((J)=>J.is($))}_checkForMissingMandatoryOptions(){this._getCommandAndAncestors().forEach(($)=>{$.options.forEach((J)=>{if(J.mandatory&&$.getOptionValue(J.attributeName())===void 0)$.missingMandatoryOptionValue(J)})})}_checkForConflictingLocalOptions(){let $=this.options.filter((z)=>{let Y=z.attributeName();if(this.getOptionValue(Y)===void 0)return!1;return this.getOptionValueSource(Y)!=="default"});$.filter((z)=>z.conflictsWith.length>0).forEach((z)=>{let Y=$.find((X)=>z.conflictsWith.includes(X.attributeName()));if(Y)this._conflictingOption(z,Y)})}_checkForConflictingOptions(){this._getCommandAndAncestors().forEach(($)=>{$._checkForConflictingLocalOptions()})}parseOptions($){let J=[],z=[],Y=J,X=$.slice();function Z(B){return B.length>1&&B[0]==="-"}let G=(B)=>{if(!/^-\d*\.?\d+(e[+-]?\d+)?$/.test(B))return!1;return!this._getCommandAndAncestors().some((T)=>T.options.map((Q)=>Q.short).some((Q)=>/^-\d$/.test(Q)))},H=null;while(X.length){let B=X.shift();if(B==="--"){if(Y===z)Y.push(B);Y.push(...X);break}if(H&&(!Z(B)||G(B))){this.emit(`option:${H.name()}`,B);continue}if(H=null,Z(B)){let T=this._findOption(B);if(T){if(T.required){let Q=X.shift();if(Q===void 0)this.optionMissingArgument(T);this.emit(`option:${T.name()}`,Q)}else if(T.optional){let Q=null;if(X.length>0&&(!Z(X[0])||G(X[0])))Q=X.shift();this.emit(`option:${T.name()}`,Q)}else this.emit(`option:${T.name()}`);H=T.variadic?T:null;continue}}if(B.length>2&&B[0]==="-"&&B[1]!=="-"){let T=this._findOption(`-${B[1]}`);if(T){if(T.required||T.optional&&this._combineFlagAndOptionalValue)this.emit(`option:${T.name()}`,B.slice(2));else this.emit(`option:${T.name()}`),X.unshift(`-${B.slice(2)}`);continue}}if(/^--[^=]+=/.test(B)){let T=B.indexOf("="),Q=this._findOption(B.slice(0,T));if(Q&&(Q.required||Q.optional)){this.emit(`option:${Q.name()}`,B.slice(T+1));continue}}if(Y===J&&Z(B)&&!(this.commands.length===0&&G(B)))Y=z;if((this._enablePositionalOptions||this._passThroughOptions)&&J.length===0&&z.length===0){if(this._findCommand(B)){if(J.push(B),X.length>0)z.push(...X);break}else if(this._getHelpCommand()&&B===this._getHelpCommand().name()){if(J.push(B),X.length>0)J.push(...X);break}else if(this._defaultCommandName){if(z.push(B),X.length>0)z.push(...X);break}}if(this._passThroughOptions){if(Y.push(B),X.length>0)Y.push(...X);break}Y.push(B)}return{operands:J,unknown:z}}opts(){if(this._storeOptionsAsProperties){let $={},J=this.options.length;for(let z=0;z<J;z++){let Y=this.options[z].attributeName();$[Y]=Y===this._versionOptionName?this._version:this[Y]}return $}return this._optionValues}optsWithGlobals(){return this._getCommandAndAncestors().reduce(($,J)=>Object.assign($,J.opts()),{})}error($,J){if(this._outputConfiguration.outputError(`${$}
+`,this._outputConfiguration.writeErr),typeof this._showHelpAfterError==="string")this._outputConfiguration.writeErr(`${this._showHelpAfterError}
+`);else if(this._showHelpAfterError)this._outputConfiguration.writeErr(`
+`),this.outputHelp({error:!0});let z=J||{},Y=z.exitCode||1,X=z.code||"commander.error";this._exit(Y,X,$)}_parseOptionsEnv(){this.options.forEach(($)=>{if($.envVar&&$.envVar in K.env){let J=$.attributeName();if(this.getOptionValue(J)===void 0||["default","config","env"].includes(this.getOptionValueSource(J)))if($.required||$.optional)this.emit(`optionEnv:${$.name()}`,K.env[$.envVar]);else this.emit(`optionEnv:${$.name()}`)}})}_parseOptionsImplied(){let $=new I1(this.options),J=(z)=>{return this.getOptionValue(z)!==void 0&&!["default","implied"].includes(this.getOptionValueSource(z))};this.options.filter((z)=>z.implied!==void 0&&J(z.attributeName())&&$.valueFromOption(this.getOptionValue(z.attributeName()),z)).forEach((z)=>{Object.keys(z.implied).filter((Y)=>!J(Y)).forEach((Y)=>{this.setOptionValueWithSource(Y,z.implied[Y],"implied")})})}missingArgument($){let J=`error: missing required argument '${$}'`;this.error(J,{code:"commander.missingArgument"})}optionMissingArgument($){let J=`error: option '${$.flags}' argument missing`;this.error(J,{code:"commander.optionMissingArgument"})}missingMandatoryOptionValue($){let J=`error: required option '${$.flags}' not specified`;this.error(J,{code:"commander.missingMandatoryOptionValue"})}_conflictingOption($,J){let z=(Z)=>{let G=Z.attributeName(),H=this.getOptionValue(G),B=this.options.find((Q)=>Q.negate&&G===Q.attributeName()),T=this.options.find((Q)=>!Q.negate&&G===Q.attributeName());if(B&&(B.presetArg===void 0&&H===!1||B.presetArg!==void 0&&H===B.presetArg))return B;return T||Z},Y=(Z)=>{let G=z(Z),H=G.attributeName();if(this.getOptionValueSource(H)==="env")return`environment variable '${G.envVar}'`;return`option '${G.flags}'`},X=`error: ${Y($)} cannot be used with ${Y(J)}`;this.error(X,{code:"commander.conflictingOption"})}unknownOption($){if(this._allowUnknownOption)return;let J="";if($.startsWith("--")&&this._showSuggestionAfterError){let Y=[],X=this;do{let Z=X.createHelp().visibleOptions(X).filter((G)=>G.long).map((G)=>G.long);Y=Y.concat(Z),X=X.parent}while(X&&!X._enablePositionalOptions);J=e$($,Y)}let z=`error: unknown option '${$}'${J}`;this.error(z,{code:"commander.unknownOption"})}_excessArguments($){if(this._allowExcessArguments)return;let J=this.registeredArguments.length,z=J===1?"":"s",X=`error: too many arguments${this.parent?` for '${this.name()}'`:""}. Expected ${J} argument${z} but got ${$.length}.`;this.error(X,{code:"commander.excessArguments"})}unknownCommand(){let $=this.args[0],J="";if(this._showSuggestionAfterError){let Y=[];this.createHelp().visibleCommands(this).forEach((X)=>{if(Y.push(X.name()),X.alias())Y.push(X.alias())}),J=e$($,Y)}let z=`error: unknown command '${$}'${J}`;this.error(z,{code:"commander.unknownCommand"})}version($,J,z){if($===void 0)return this._version;this._version=$,J=J||"-V, --version",z=z||"output the version number";let Y=this.createOption(J,z);return this._versionOptionName=Y.attributeName(),this._registerOption(Y),this.on("option:"+Y.name(),()=>{this._outputConfiguration.writeOut(`${$}
+`),this._exit(0,"commander.version",$)}),this}description($,J){if($===void 0&&J===void 0)return this._description;if(this._description=$,J)this._argsDescription=J;return this}summary($){if($===void 0)return this._summary;return this._summary=$,this}alias($){if($===void 0)return this._aliases[0];let J=this;if(this.commands.length!==0&&this.commands[this.commands.length-1]._executableHandler)J=this.commands[this.commands.length-1];if($===J._name)throw Error("Command alias can't be the same as its name");let z=this.parent?._findCommand($);if(z){let Y=[z.name()].concat(z.aliases()).join("|");throw Error(`cannot add alias '${$}' to command '${this.name()}' as already have command '${Y}'`)}return J._aliases.push($),this}aliases($){if($===void 0)return this._aliases;return $.forEach((J)=>this.alias(J)),this}usage($){if($===void 0){if(this._usage)return this._usage;let J=this.registeredArguments.map((z)=>{return K1(z)});return[].concat(this.options.length||this._helpOption!==null?"[options]":[],this.commands.length?"[command]":[],this.registeredArguments.length?J:[]).join(" ")}return this._usage=$,this}name($){if($===void 0)return this._name;return this._name=$,this}helpGroup($){if($===void 0)return this._helpGroupHeading??"";return this._helpGroupHeading=$,this}commandsGroup($){if($===void 0)return this._defaultCommandGroup??"";return this._defaultCommandGroup=$,this}optionsGroup($){if($===void 0)return this._defaultOptionGroup??"";return this._defaultOptionGroup=$,this}_initOptionGroup($){if(this._defaultOptionGroup&&!$.helpGroupHeading)$.helpGroup(this._defaultOptionGroup)}_initCommandGroup($){if(this._defaultCommandGroup&&!$.helpGroup())$.helpGroup(this._defaultCommandGroup)}nameFromFilename($){return this._name=y.basename($,y.extname($)),this}executableDir($){if($===void 0)return this._executableDir;return this._executableDir=$,this}helpInformation($){let J=this.createHelp(),z=this._getOutputContext($);J.prepareContext({error:z.error,helpWidth:z.helpWidth,outputHasColors:z.hasColors});let Y=J.formatHelp(this,J);if(z.hasColors)return Y;return this._outputConfiguration.stripColor(Y)}_getOutputContext($){$=$||{};let J=!!$.error,z,Y,X;if(J)z=(G)=>this._outputConfiguration.writeErr(G),Y=this._outputConfiguration.getErrHasColors(),X=this._outputConfiguration.getErrHelpWidth();else z=(G)=>this._outputConfiguration.writeOut(G),Y=this._outputConfiguration.getOutHasColors(),X=this._outputConfiguration.getOutHelpWidth();return{error:J,write:(G)=>{if(!Y)G=this._outputConfiguration.stripColor(G);return z(G)},hasColors:Y,helpWidth:X}}outputHelp($){let J;if(typeof $==="function")J=$,$=void 0;let z=this._getOutputContext($),Y={error:z.error,write:z.write,command:this};this._getCommandAndAncestors().reverse().forEach((Z)=>Z.emit("beforeAllHelp",Y)),this.emit("beforeHelp",Y);let X=this.helpInformation({error:z.error});if(J){if(X=J(X),typeof X!=="string"&&!Buffer.isBuffer(X))throw Error("outputHelp callback must return a string or a Buffer")}if(z.write(X),this._getHelpOption()?.long)this.emit(this._getHelpOption().long);this.emit("afterHelp",Y),this._getCommandAndAncestors().forEach((Z)=>Z.emit("afterAllHelp",Y))}helpOption($,J){if(typeof $==="boolean"){if($){if(this._helpOption===null)this._helpOption=void 0;if(this._defaultOptionGroup)this._initOptionGroup(this._getHelpOption())}else this._helpOption=null;return this}if(this._helpOption=this.createOption($??"-h, --help",J??"display help for command"),$||J)this._initOptionGroup(this._helpOption);return this}_getHelpOption(){if(this._helpOption===void 0)this.helpOption(void 0,void 0);return this._helpOption}addHelpOption($){return this._helpOption=$,this._initOptionGroup($),this}help($){this.outputHelp($);let J=Number(K.exitCode??0);if(J===0&&$&&typeof $!=="function"&&$.error)J=1;this._exit(J,"commander.help","(outputHelp)")}addHelpText($,J){let z=["beforeAll","before","after","afterAll"];if(!z.includes($))throw Error(`Unexpected value for position to addHelpText.
+Expecting one of '${z.join("', '")}'`);let Y=`${$}Help`;return this.on(Y,(X)=>{let Z;if(typeof J==="function")Z=J({error:X.error,command:X.command});else Z=J;if(Z)X.write(`${Z}
+`)}),this}_outputHelpIfRequested($){let J=this._getHelpOption();if(J&&$.find((Y)=>J.is(Y)))this.outputHelp(),this._exit(0,"commander.helpDisplayed","(outputHelp)")}}function $0($){return $.map((J)=>{if(!J.startsWith("--inspect"))return J;let z,Y="127.0.0.1",X="9229",Z;if((Z=J.match(/^(--inspect(-brk)?)$/))!==null)z=Z[1];else if((Z=J.match(/^(--inspect(-brk|-port)?)=([^:]+)$/))!==null)if(z=Z[1],/^\d+$/.test(Z[3]))X=Z[3];else Y=Z[3];else if((Z=J.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/))!==null)z=Z[1],Y=Z[3],X=Z[4];if(z&&X!=="0")return`${z}=${Y}:${parseInt(X)+1}`;return J})}function I$(){if(K.env.NO_COLOR||K.env.FORCE_COLOR==="0"||K.env.FORCE_COLOR==="false")return!1;if(K.env.FORCE_COLOR||K.env.CLICOLOR_FORCE!==void 0)return!0;return}j1.Command=j$;j1.useColor=I$});var Z0=U((D1)=>{var{Argument:z0}=a(),{Command:W$}=J0(),{CommanderError:N1,InvalidArgumentError:Y0}=g(),{Help:R1}=P$(),{Option:X0}=K$();D1.program=new W$;D1.createCommand=($)=>new W$($);D1.createOption=($,J)=>new X0($,J);D1.createArgument=($,J)=>new z0($,J);D1.Command=W$;D1.Option=X0;D1.Argument=z0;D1.Help=R1;D1.CommanderError=N1;D1.InvalidArgumentError=Y0;D1.InvalidOptionArgumentError=Y0});import{execFileSync as W0}from"child_process";import{randomUUID as w}from"crypto";import{access as V0,link as N0,mkdir as l,readFile as E,readdir as E$,rename as v,rm as n,unlink as X$,writeFile as p}from"fs/promises";import{basename as Q$,dirname as G$,join as L,resolve as D$}from"path";var B$="id\ttrack\tstate\tbranch\tpr\tsha\tbrief",H$="pr\tsha\tverdict\tevidence\tverifier\tts",R0=".orch.lock",D0=".orch.lock.takeover",y0=60000;class P extends Error{}class C extends P{}class O extends P{output;constructor($,J){super($);this.output=J}}function D($){if($!==null&&typeof $==="object"&&"code"in $&&typeof $.code==="string")return $.code;return null}function A0($){return $ instanceof Error?$.message:String($)}function R($){return $!==null&&typeof $==="object"&&!Array.isArray($)}function _$($){return Array.isArray($)}function C$($){switch($){case"live-ui-verified":case"unit-test-verified":case"type-check-only":case"verifier-blocked":case"verifier-failed":return $;default:return null}}function F0($){switch($){case"OPEN":case"MERGED":case"CLOSED":return $;default:return null}}function S$($){let J=C$($);if(J===null)throw new P("verdict must be live-ui-verified, unit-test-verified, type-check-only, verifier-blocked, or verifier-failed");return J}function x$($){let J=$.replace(/[\t\n\r]/g," ");return/^['=+\-@]/.test(J)?`'${J}`:J}function b$($){return/^'['=+\-@]/.test($)?$.slice(1):$}function W($,J){let z=$.replace(/[\t\n\r]/g," ");if(z.trim().length===0)throw new P(`${J} must not be empty`);return z}function A($,J){let z=$.replace(/[\n\r]/g," ").trim();if(z.length===0)throw new P(`${J} must not be empty`);return z}function u($,J){if(!Number.isSafeInteger($)||$<1)throw new P(`${J} must be a positive integer`);return $}async function i($){try{return await V0($),!0}catch(J){if(D(J)==="ENOENT")return!1;throw J}}async function F($,J){let z=L(G$($),`.${Q$($)}.${process.pid}.${w()}.tmp`);try{await p(z,J,{flag:"wx"}),await v(z,$)}finally{await n(z,{force:!0}).catch(()=>{})}}async function b($,J){if(!await i($))await F($,J)}async function t($){try{return await E($,"utf8")}catch(J){if(D(J)==="ENOENT")throw new P(`store is not initialized at ${G$($)}; run orch init`);throw J}}function y$($){let J=Number.parseInt($,10);if(!Number.isSafeInteger(J)||J<=0||String(J)!==$)return!1;try{return process.kill(J,0),!1}catch(z){return D(z)==="ESRCH"}}async function U0($,J){let z=L($,R0),Y=L($,D0),X=String(process.pid),Z=async()=>{let Q=`${z}.${X}.${w()}`;await p(Q,`${X}
+`,{flag:"wx"});try{await N0(Q,z)}catch(_){if(D(_)==="EEXIST")throw _;await p(z,`${X}
+`,{flag:"wx"})}finally{await X$(Q).catch(()=>{})}},G=async()=>{for(let Q=2;;Q-=1){try{return await Z(),null}catch(_){if(D(_)!=="EEXIST")throw _}try{return(await E(z,"utf8")).trim()||"unknown"}catch(_){if(D(_)!=="ENOENT"||Q===0)return"unknown"}}},H=async(Q)=>{let _=`${Y}.${X}.${w()}`,S=()=>n(_,{recursive:!0,force:!0}).catch(()=>{});await l(_);try{await p(L(_,X),"");for(let M of await E$(Y).catch(()=>[]))if(y$(M))await n(L(Y,M),{force:!0});await v(_,Y)}catch(M){await S();let q=D(M);if(q!=="ENOTEMPTY"&&q!=="EEXIST")throw M;return!1}try{await Q()}finally{await v(Y,_).catch(()=>{}),await S()}return!0},B=async(Q)=>{if(!await H(async()=>{try{let M=(await E(z,"utf8")).trim()||"unknown";if(M!==Q)throw new P(`store lock held by pid ${M}`);await X$(z)}catch(M){if(D(M)!=="ENOENT")throw M}let S=await G();if(S!==null)throw new P(`store lock held by pid ${S}`)}))throw new P(`store lock held by pid ${Q} is being replaced by another writer; retry`)},T=await G();if(T!==null)if(y$(T))J.onStaleLock?.(T),await B(T);else if(J.force)J.onLockStolen?.(T),await B(T);else throw new P(`store lock held by pid ${T}`);return async()=>{let Q=async()=>{try{if((await E(z,"utf8")).trim()===X)await X$(z)}catch(_){if(D(_)!=="ENOENT")throw _}};for(;;){if(await H(Q))return;await new Promise((_)=>setTimeout(_,10))}}}async function w$($,J,z){let Y=(await t($)).replace(/\r/g,"").split(`
+`);if(Y.shift()!==J)throw new P(`${Q$($)} has an invalid header`);return Y.filter((X)=>X.length>0).map((X)=>{let Z=X.split("\t");if(Z.length!==z)throw new P(`${Q$($)} has a malformed row`);return Z.map(b$)})}async function v$($,J,z){let Y=z.map((X)=>X.map(x$).join("\t")).join(`
+`);await F($,`${J}
+${Y}${Y.length>0?`
+`:""}`)}async function f($){return(await w$(L($,"units.tsv"),B$,7)).map((J)=>({id:J[0]??"",track:J[1]??"",state:J[2]??"",branch:J[3]??"",pr:J[4]??"",sha:J[5]??"",brief:J[6]??""}))}function h$($){return[$.id,$.track,$.state,$.branch,$.pr,$.sha,$.brief]}async function A$($,J){await v$(L($,"units.tsv"),B$,J.map(h$))}async function c($){return(await w$(L($,"ledger.tsv"),H$,6)).map((J)=>{let z=J[2]??"",Y=C$(z);if(Y===null)throw new P(`ledger.tsv has invalid verdict ${z}`);return{pr:J[0]??"",sha:J[1]??"",verdict:Y,evidence:J[3]??"",verifier:J[4]??"",ts:J[5]??""}})}function g$($){return[$.pr,$.sha,$.verdict,$.evidence,$.verifier,$.ts]}async function O0($,J){await v$(L($,"ledger.tsv"),H$,J.map(g$))}function k0($){return[$.ts,$.agent,$.unit,$.status,$.report]}async function Z$($){let J;try{J=await E$($,{withFileTypes:!0})}catch(X){if(D(X)==="ENOENT")throw new P(`store is not initialized at ${G$($)}; run orch init`);throw X}let z=[],Y=J.filter((X)=>X.isFile()&&X.name.endsWith(".tsv")).sort((X,Z)=>X.name.localeCompare(Z.name));for(let X of Y){let Z=(await E(L($,X.name),"utf8")).replace(/\r?\n$/,""),G=Z.split("\t").map(b$);if(/[\r\n]/.test(Z)||G.length!==5)throw new P(`inbox pointer ${X.name} is malformed`);z.push({ts:G[0]??"",agent:G[1]??"",unit:G[2]??"",status:G[3]??"",report:G[4]??""})}return z}function F$($){if($.length===0)return"";return`# Gates
 
-interface GlobalOptions {
-  readonly store?: string;
-  readonly json: boolean;
-  readonly force: boolean;
-}
+${$.map((z)=>{let Y=z.kind==="resolved"?`
+- Answer: ${z.answer}`:"";return`## ${z.id}
 
-interface UnitAddOptions {
-  readonly track: string;
-  readonly brief?: string;
-}
+- Status: ${z.kind}
+- Question: ${z.question}
+- Options: ${z.options}
+- Default: ${z.defaultAnswer}${Y}`}).join(`
 
-interface UnitSetOptions {
-  readonly state: string;
-  readonly branch?: string;
-  readonly pr?: number;
-  readonly sha?: string;
-}
+`)}
+`}async function m($){let J=(await t(L($,"gates.md"))).replace(/\r/g,"").trim();if(J.length===0)return[];let z=`# Gates
 
-interface UnitListOptions {
-  readonly state?: string;
-  readonly track?: string;
-}
+## `;if(!J.startsWith(z))throw new P("gates.md has an invalid heading");let Y=[];for(let X of J.slice(z.length).split(`
 
-interface LedgerRecordOptions {
-  readonly evidence: string;
-  readonly verifier?: string;
-}
+## `)){let Z=X.split(`
+`).filter((S)=>S.length>0),G=Z.shift()??"",H=new Map;for(let S of Z){let M=/^- ([^:]+): (.*)$/.exec(S);if(M===null)throw new P(`gates.md has a malformed gate ${G}`);H.set(M[1]??"",M[2]??"")}let B=H.get("Status"),T=H.get("Question"),Q=H.get("Options"),_=H.get("Default");if(G.length===0||T===void 0||Q===void 0||_===void 0)throw new P(`gates.md has a malformed gate ${G}`);if(B==="open")Y.push({kind:"open",id:G,question:T,options:Q,defaultAnswer:_});else if(B==="resolved"&&H.has("Answer"))Y.push({kind:"resolved",id:G,question:T,options:Q,defaultAnswer:_,answer:H.get("Answer")??""});else throw new P(`gates.md has invalid status ${B??""}`)}if(new Set(Y.map((X)=>X.id)).size!==Y.length)throw new P("gates.md has duplicate gate ids");return Y}function f0($){let J;try{J=JSON.parse($)}catch{throw new P("frontier.json is not valid JSON")}if(!R(J))throw new P("frontier.json must contain an object");if(Object.keys(J).length===0)return{generation:0,prs:[],lowestUnmerged:null};if(typeof J.generation!=="number"||!Number.isSafeInteger(J.generation)||J.generation<0||!_$(J.prs)||!(J.lowestUnmerged===null||typeof J.lowestUnmerged==="number"&&Number.isSafeInteger(J.lowestUnmerged)))throw new P("frontier.json has an invalid shape");let z=[];for(let Y of J.prs){let X=R(Y)?F0(Y.state):null;if(!R(Y)||typeof Y.pr!=="number"||!Number.isSafeInteger(Y.pr)||Y.pr<1||typeof Y.branches!=="string"||Y.branches.length===0||typeof Y.sha!=="string"||X===null)throw new P("frontier.json has an invalid PR row");z.push({pr:Y.pr,branches:Y.branches,sha:Y.sha,state:X})}return{generation:J.generation,prs:z,lowestUnmerged:J.lowestUnmerged}}async function T$($){return f0(await t(L($,"frontier.json")))}async function U$($){let J=(await t(L($,"preferences.md"))).replace(/\r/g,"");if(J.trim().length===0)return[];let z=[];for(let Y of J.split(`
+`).filter((X)=>X.length>0)){let X=/^([1-9]\d*)\. (.+)$/.exec(Y),Z=Number(X?.[1]??0);if(X===null||Z!==z.length+1)throw new P("preferences.md has malformed numbering");z.push({number:Z,line:X[2]??""})}return z}function s($){let J={};for(let z of $)J[z]=(J[z]??0)+1;return Object.fromEntries(Object.entries(J).sort(([z],[Y])=>z.localeCompare(Y)))}function E0($,J,z,Y){return{unitStates:s($.map((X)=>X.state)),ledgerVerdicts:s(J.map((X)=>X.verdict)),frontierGeneration:z.generation,openGateIds:Y.filter((X)=>X.kind==="open").map((X)=>X.id).sort()}}function O$($){if(!R($))return null;let J={};for(let[z,Y]of Object.entries($)){if(typeof Y!=="number"||!Number.isSafeInteger(Y)||Y<0)return null;J[z]=Y}return J}function C0($){let J=/<!-- orch-summary (.+) -->/.exec($);if(J===null)return null;let z;try{z=JSON.parse(J[1]??"")}catch{return null}if(!R(z)||typeof z.frontierGeneration!=="number"||!_$(z.openGateIds))return null;let Y=O$(z.unitStates),X=O$(z.ledgerVerdicts),Z=z.openGateIds.filter((G)=>typeof G==="string");if(Y===null||X===null||Z.length!==z.openGateIds.length)return null;return{unitStates:Y,ledgerVerdicts:X,frontierGeneration:z.frontierGeneration,openGateIds:Z}}function x0($,J){if($===null)return"first render";let z=[],Y=[{label:"units",oldCounts:$.unitStates,newCounts:J.unitStates},{label:"ledger",oldCounts:$.ledgerVerdicts,newCounts:J.ledgerVerdicts}];for(let{label:X,oldCounts:Z,newCounts:G}of Y){let H=[...new Set([...Object.keys(Z),...Object.keys(G)])].sort();for(let B of H){let T=Z[B]??0,Q=G[B]??0;if(T!==Q)z.push(`${X} ${B} ${T}->${Q}`)}}if($.frontierGeneration!==J.frontierGeneration)z.push(`frontier generation ${$.frontierGeneration}->${J.frontierGeneration}`);if($.openGateIds.join("\x00")!==J.openGateIds.join("\x00"))z.push(`open gates ${$.openGateIds.length}->${J.openGateIds.length}`);return z.length===0?"no derived changes":z.join("; ")}function b0($){return $.replace(/[\t\n\r]/g," ").replace(/\\/g,"\\\\").replace(/\|/g,"\\|")}function d($,J){if(J.length===0)return"(none)";return[`| ${$.join(" | ")} |`,`| ${$.map(()=>"---").join(" | ")} |`,...J.map((z)=>`| ${z.map(b0).join(" | ")} |`)].join(`
+`)}function w0($,J,z,Y,X){return`# Orchestrate status
 
-interface InboxPushOptions {
-  readonly report?: string;
-}
+Generated: ${new Date().toISOString()}
 
-interface InboxDrainOptions {
-  readonly peek: boolean;
-}
+## Units
 
-interface GateParkOptions {
-  readonly question: string;
-  readonly options: string;
-  readonly default: string;
-}
+States: ${k$(X.unitStates)}
 
-interface GateResolveOptions {
-  readonly answer: string;
-}
+${d(["ID","Track","State","Branch","PR","SHA","Brief"],$.map(h$))}
 
-interface FrontierSetOptions {
-  readonly repo?: string;
-  readonly forge: Forge;
-  readonly prs?: readonly number[];
-}
+## Verification ledger
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+Verdicts: ${k$(X.ledgerVerdicts)}
 
-function positiveInteger(value: string): number {
-  const parsed = Number(value);
-  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(parsed)) {
-    throw new InvalidArgumentError("must be a positive integer");
-  }
-  return parsed;
-}
+${d(["PR","SHA","Verdict","Evidence","Verifier","Timestamp"],J.map(g$))}
 
-function prList(value: string): readonly number[] {
-  const parts = value.split(",");
-  if (parts.some((part) => part.length === 0)) {
-    throw new InvalidArgumentError("requires a comma-separated PR list");
-  }
-  return parts.map(positiveInteger);
-}
+## Frontier
 
-function countLine(value: Counts): string {
-  const entries = Object.entries(value);
-  return entries.length === 0
-    ? "none"
-    : entries.map(([name, count]) => `${name}=${count}`).join(", ");
-}
+Generation: ${z.generation}
+Lowest unmerged: ${z.lowestUnmerged??"none"}
 
-function unitLine(unit: Unit): string {
-  return [
-    unit.id,
-    unit.track,
-    unit.state,
-    unit.branch,
-    unit.pr,
-    unit.sha,
-    unit.brief,
-  ].join("\t");
-}
+${d(["Branch","PR","SHA","State"],z.prs.map((Z)=>[Z.branches,String(Z.pr),Z.sha,Z.state]))}
 
-function pointerLine(pointer: InboxPointer): string {
-  return [
-    pointer.ts,
-    pointer.agent,
-    pointer.unit,
-    pointer.status,
-    pointer.report,
-  ].join("\t");
-}
+## Gates
 
-function gateLine(gate: OpenGate): string {
-  return [
-    gate.id,
-    gate.question,
-    gate.options,
-    gate.defaultAnswer,
-  ].join("\t");
-}
+${d(["ID","Status","Question","Options","Default","Answer"],Y.map((Z)=>[Z.id,Z.kind,Z.question,Z.options,Z.defaultAnswer,Z.kind==="resolved"?Z.answer:""]))}
 
-function compactRows<T>(
-  rows: readonly T[],
-  format: (row: T) => string,
-  empty: string,
-  limit: number | null = DISPLAY_LIMIT
-): string {
-  if (rows.length === 0) {
-    return empty;
-  }
-  const visible = limit === null ? rows : rows.slice(0, limit);
-  const lines = visible.map(format);
-  if (limit !== null && rows.length > limit) {
-    lines.push(`... ${rows.length - limit} more; use --json`);
-  }
-  return lines.join("\n");
-}
-
-function frontierLine(value: Frontier): string {
-  const prs =
-    value.prs.length === 0
-      ? "none"
-      : value.prs
-          .map(
-            (row) =>
-              `${row.branches}#${row.pr}@${row.sha}:${row.state}`
-          )
-          .join(",");
-  return `generation=${value.generation} prs=${prs} lowest-unmerged=${value.lowestUnmerged ?? "none"}`;
-}
-
-function statusLines(report: StatusReport): string {
-  const visible = report.summary.openGateIds.slice(0, DISPLAY_LIMIT);
-  const more =
-    report.summary.openGateIds.length > DISPLAY_LIMIT
-      ? `,+${report.summary.openGateIds.length - DISPLAY_LIMIT} more`
-      : "";
-  return [
-    `counts: units=${report.units.length}; states=${countLine(report.summary.unitStates)}; ledger=${countLine(report.summary.ledgerVerdicts)}`,
-    `changed: ${report.changed}`,
-    `gates open: ${report.summary.openGateIds.length}${
-      visible.length > 0 ? `; ids=${visible.join(",")}${more}` : ""
-    }`,
-  ].join("\n");
-}
-
-function emit<T>(
-  io: Io,
-  json: boolean,
-  value: T,
-  compact: (result: T) => string,
-  jsonValue: (result: T) => unknown = (result) => result
-): void {
-  const rendered = json
-    ? JSON.stringify(jsonValue(value), null, 2)
-    : compact(value);
-  io.stdout(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
-}
-
-function storeDirectory(program: Command): string {
-  const value = program.opts<GlobalOptions>().store;
-  if (value === undefined || value.trim().length === 0) {
-    throw new UsageError("set --store <dir> or ORCH_STORE");
-  }
-  return value;
-}
-
-function frontierRepo(options: FrontierSetOptions): string {
-  const value = options.repo;
-  if (value === undefined || value.trim().length === 0) {
-    throw new UsageError("set --repo <dir> or ORCH_REPO");
-  }
-  return value;
-}
-
-async function runStore<T>(
-  program: Command,
-  io: Io,
-  operation: (store: Store) => Promise<T>,
-  compact: (result: T) => string,
-  jsonValue?: (result: T) => unknown
-): Promise<void> {
-  const options = program.opts<GlobalOptions>();
-  const store = openStore(storeDirectory(program), {
-    force: options.force,
-    onLockStolen: (holder) =>
-      io.stderr(`stealing store lock held by pid ${holder}\n`),
-    onStaleLock: (holder) =>
-      io.stderr(`replacing stale store lock (pid ${holder} is dead)\n`),
-  });
-  try {
-    const result = await operation(store);
-    emit(io, options.json, result, compact, jsonValue);
-  } finally {
-    await store.close();
-  }
-}
-
-function leaf(parent: Command, name: string, description: string): Command {
-  return parent
-    .command(name)
-    .description(description)
-    .allowExcessArguments(false);
-}
-
-function requireSubcommand(program: Command): never {
-  storeDirectory(program);
-  throw new UsageError("a valid command is required");
-}
-
-function createProgram(io: Io): Command {
-  const program = new CommanderCommand("orch")
-    .description("Plain-file orchestrate bookkeeping")
-    .usage("[--store <dir>] [--json] [--force] <command>")
-    .configureOutput({ writeOut: io.stdout, writeErr: io.stderr })
-    .exitOverride()
-    .showHelpAfterError()
-    .allowExcessArguments(false)
-    .addOption(
-      new Option("--store <dir>", "store directory (or ORCH_STORE)").env(
-        "ORCH_STORE"
-      )
-    )
-    .option("--json", "print complete rows as JSON", false)
-    .option("--force", "steal an existing store lock", false);
-
-  leaf(program, "init", "initialize the store").action(() =>
-    runStore(
-      program,
-      io,
-      (store) => store.init(),
-      (result) => `initialized ${result.store}`
-    )
-  );
-
-  const unit = program
-    .command("unit")
-    .description("manage work units")
-    .action(() => requireSubcommand(program));
-  leaf(unit, "add <id>", "add a unit")
-    .requiredOption("--track <track>", "unit track")
-    .option("--brief <path>", "brief path")
-    .action((id: string, options: UnitAddOptions) =>
-      runStore(
-        program,
-        io,
-        (store) =>
-          store.units.add({
-            id,
-            track: options.track,
-            brief: options.brief,
-          }),
-        unitLine
-      )
-    );
-  leaf(unit, "set <id>", "update a unit")
-    .requiredOption("--state <state>", "unit state")
-    .option("--branch <branch>", "branch name")
-    .option("--pr <number>", "pull request number", positiveInteger)
-    .option("--sha <sha>", "commit SHA")
-    .action((id: string, options: UnitSetOptions) =>
-      runStore(
-        program,
-        io,
-        (store) =>
-          store.units.set({
-            id,
-            state: options.state,
-            branch: options.branch,
-            pr: options.pr,
-            sha: options.sha,
-          }),
-        unitLine
-      )
-    );
-  leaf(unit, "get <id>", "get a unit").action((id: string) =>
-    runStore(program, io, (store) => store.units.get(id), unitLine)
-  );
-  leaf(unit, "list", "list units")
-    .option("--state <state>", "filter by state")
-    .option("--track <track>", "filter by track")
-    .action((options: UnitListOptions) =>
-      runStore(
-        program,
-        io,
-        (store) => store.units.list(options),
-        (rows) => compactRows(rows, unitLine, "(no units)")
-      )
-    );
-  leaf(unit, "counts", "count units by state").action(() =>
-    runStore(program, io, (store) => store.units.counts(), countLine)
-  );
-
-  const ledger = program
-    .command("ledger")
-    .description("manage verification records")
-    .action(() => requireSubcommand(program));
-  leaf(ledger, "record", "record a verification verdict")
-    .argument("<pr>", "pull request number", positiveInteger)
-    .argument("<sha>", "commit SHA")
-    .argument("<verdict>", "verification verdict", parseVerdict)
-    .requiredOption("--evidence <path>", "evidence path")
-    .option("--verifier <name>", "verifier name")
-    .action(
-      (
-        pr: number,
-        sha: string,
-        verdict: Verdict,
-        options: LedgerRecordOptions
-      ) =>
-        runStore(
-          program,
-          io,
-          (store) =>
-            store.ledger.record({
-              pr,
-              sha,
-              verdict,
-              evidence: options.evidence,
-              verifier: options.verifier,
-            }),
-          (row) => `${row.pr}\t${row.sha}\t${row.verdict}`
-        )
-    );
-  leaf(ledger, "check", "check a verification verdict")
-    .argument("<pr>", "pull request number", positiveInteger)
-    .argument("<sha>", "commit SHA")
-    .action((pr: number, sha: string) =>
-      runStore(
-        program,
-        io,
-        (store) => store.ledger.check({ pr, sha }),
-        (row) => row.verdict
-      )
-    );
-  leaf(ledger, "summary", "count verification verdicts").action(() =>
-    runStore(program, io, (store) => store.ledger.summary(), countLine)
-  );
-
-  const inbox = program
-    .command("inbox")
-    .description("manage agent pointers")
-    .action(() => requireSubcommand(program));
-  leaf(inbox, "push <agent> <unit> <status>", "push an inbox pointer")
-    .option("--report <path>", "report path")
-    .action(
-      (
-        agent: string,
-        unitId: string,
-        status: string,
-        options: InboxPushOptions
-      ) =>
-        runStore(
-          program,
-          io,
-          (store) =>
-            store.inbox.push({
-              agent,
-              unit: unitId,
-              status,
-              report: options.report,
-            }),
-          (result) =>
-            `${result.pointer.unit}\t${result.pointer.status}\t${result.filename}`,
-          (result) => result.pointer
-        )
-    );
-  leaf(inbox, "drain", "drain inbox pointers")
-    .option("--peek", "read without draining", false)
-    .action((options: InboxDrainOptions) =>
-      runStore(
-        program,
-        io,
-        (store) =>
-          options.peek ? store.inbox.peek() : store.inbox.drain(),
-        (rows) => compactRows(rows, pointerLine, "(empty)", null)
-      )
-    );
-  leaf(inbox, "count", "count inbox pointers").action(() =>
-    runStore(
-      program,
-      io,
-      (store) => store.inbox.count(),
-      String,
-      (count) => ({ count })
-    )
-  );
-
-  const gate = program
-    .command("gate")
-    .description("manage decision gates")
-    .action(() => requireSubcommand(program));
-  leaf(gate, "park <id>", "park a decision gate")
-    .requiredOption("--question <question>", "gate question")
-    .requiredOption("--options <options>", "gate options")
-    .requiredOption("--default <answer>", "default answer")
-    .action((id: string, options: GateParkOptions) =>
-      runStore(
-        program,
-        io,
-        (store) =>
-          store.gates.park({
-            id,
-            question: options.question,
-            options: options.options,
-            defaultAnswer: options.default,
-          }),
-        (result) => `${result.id}\topen`
-      )
-    );
-  leaf(gate, "list", "list open decision gates").action(() =>
-    runStore(
-      program,
-      io,
-      (store) => store.gates.list(),
-      (rows) => compactRows(rows, gateLine, "(no open gates)")
-    )
-  );
-  leaf(gate, "resolve <id>", "resolve a decision gate")
-    .requiredOption("--answer <answer>", "chosen answer")
-    .action((id: string, options: GateResolveOptions) =>
-      runStore(
-        program,
-        io,
-        (store) => store.gates.resolve({ id, answer: options.answer }),
-        (result) => `${result.id}\tresolved\t${result.answer}`
-      )
-    );
-
-  const frontier = program
-    .command("frontier")
-    .description("manage the stack frontier")
-    .action(() => requireSubcommand(program));
-  leaf(
-    frontier,
-    "set",
-    "resolve the pull request base chain and set the frontier"
-  )
-    .addOption(
-      new Option(
-        "--repo <dir>",
-        "repository directory (or ORCH_REPO)"
-      ).env("ORCH_REPO")
-    )
-    .addOption(
-      new Option("--forge <forge>", "pull request forge")
-        .choices(["gh", "origin"])
-        .default("gh")
-    )
-    .option(
-      "--prs <n,...>",
-      "optional expected pull request order pin",
-      prList
-    )
-    .action((options: FrontierSetOptions) =>
-      runStore(
-        program,
-        io,
-        (store) =>
-          store.frontier.set({
-            repo: frontierRepo(options),
-            forge: options.forge,
-            prs: options.prs,
-          }),
-        frontierLine
-      )
-    );
-  leaf(frontier, "show", "show the frontier").action(() =>
-    runStore(program, io, (store) => store.frontier.show(), frontierLine)
-  );
-
-  leaf(program, "status", "render status.md and print a summary").action(() =>
-    runStore(program, io, (store) => store.status.render(), statusLines)
-  );
-
-  const standing = program
-    .command("standing")
-    .description("manage standing orders")
-    .action(() => requireSubcommand(program));
-  leaf(standing, "show", "show standing orders").action(() =>
-    runStore(
-      program,
-      io,
-      (store) => store.standing.show(),
-      (rows) =>
-        compactRows(
-          rows,
-          (item: StandingLine) => `${item.number}. ${item.line}`,
-          "(no standing orders)"
-        )
-    )
-  );
-  leaf(standing, "add <line>", "add a standing order").action((line: string) =>
-    runStore(
-      program,
-      io,
-      (store) => store.standing.add({ line }),
-      (item) => `${item.number}. ${item.line}`
-    )
-  );
-
-  program.action(() => requireSubcommand(program));
-  return program;
-}
-
-function handleError(error: unknown, program: Command, io: Io): number {
-  if (error instanceof CommanderError) {
-    return error.exitCode === 0 ? 0 : 1;
-  }
-  const json = program.opts<GlobalOptions>().json;
-  if (error instanceof NotFoundError) {
-    const output = error.output;
-    if (output === undefined) {
-      io.stderr(`error: ${error.message}\n`);
-    } else {
-      emit(io, json, output.json, () => output.compact);
-    }
-    return 2;
-  }
-  io.stderr(`error: ${message(error)}\n`);
-  if (error instanceof UsageError) {
-    io.stderr(program.helpInformation());
-  }
-  return 1;
-}
-
-export async function main(
-  argv: readonly string[],
-  io: Io = {
-    stdout: (value) => process.stdout.write(value),
-    stderr: (value) => process.stderr.write(value),
-  }
-): Promise<number> {
-  const program = createProgram(io);
-  try {
-    await program.parseAsync(argv, { from: "user" });
-    return 0;
-  } catch (error) {
-    return handleError(error, program, io);
-  }
-}
-
-if (import.meta.main) {
-  process.exitCode = await main(process.argv.slice(2));
-}
+<!-- orch-summary ${JSON.stringify(X)} -->
+`}function k$($){let J=Object.entries($);return J.length===0?"none":J.map(([z,Y])=>`${z}=${Y}`).join(", ")}var u$={gh:{stateField:"state",headField:"headRefName",baseField:"baseRefName",headRepositoryField:"headRepository",listArgs:["--limit","1000"],states:new Map([["OPEN","OPEN"],["MERGED","MERGED"],["CLOSED","CLOSED"]])},origin:{stateField:"status",headField:"headRef",baseField:"baseRef",listArgs:[],states:new Map([["open","OPEN"],["draft","OPEN"],["merged","MERGED"],["closed","CLOSED"]])}};function v0($){if($==="gh"||$==="origin")return $;throw new P("forge must be gh or origin")}function h0($,J){if(J===void 0)return null;let z=$[J];if(z===null)return null;return R(z)&&typeof z.nameWithOwner==="string"?z.nameWithOwner.toLowerCase():void 0}function c$({command:$,args:J,repo:z,executable:Y}){try{return W0(Y?.path??$,J,{cwd:z,encoding:"utf8",stdio:["ignore","pipe","pipe"],timeout:Y?.timeout,killSignal:"SIGKILL"})}catch(X){throw new P(`${$} ${J.join(" ")} failed: ${A0(X)}`)}}function m$({filter:$,branch:J,forge:z,executable:Y,repo:X,localRepository:Z}){let G=u$[z],H=`${z} pr list ${$} ${J}`,B=c$({command:z,args:["pr","list",$,J,"--state","all",...G.listArgs,"--json",["number",G.stateField,G.headField,G.baseField,...G.headRepositoryField?[G.headRepositoryField]:[]].join(",")],repo:X,executable:Y}),T;try{T=JSON.parse(B)}catch{throw new P(`${H} output is not valid JSON`)}if(!_$(T))throw new P(`${H} output is not a JSON array`);let Q=T.map((S)=>{let M=R(S)?S[G.stateField]:void 0,q=typeof M==="string"?G.states.get(M)??null:null,V=R(S)?S[G.headField]:void 0,N=R(S)?S[G.baseField]:void 0,N$=R(S)?h0(S,G.headRepositoryField):void 0;if(!R(S)||typeof S.number!=="number"||!Number.isSafeInteger(S.number)||S.number<1||q===null||typeof V!=="string"||V.length===0||typeof N!=="string"||N.length===0||N$===void 0)throw new P(`${H} output has an invalid PR row`);return{pr:S.number,state:q,branch:V,base:N,repository:N$}}),_=(S)=>Z===null||S.repository===Z;return{local:Q.filter(_),foreign:Q.filter((S)=>!_(S))}}function f$({branch:$,forge:J,executable:z,repo:Y,localRepository:X}){let{local:Z,foreign:G}=m$({filter:"--head",branch:$,forge:J,executable:z,repo:Y,localRepository:X}),H=Z[0];if(H===void 0){let B=G.length===0||X===null?"":` from ${X} (ignored ${G.map((T)=>`#${T.pr} from ${T.repository??"a deleted repository"}`).join(", ")})`;throw new P(`branch ${$} has no pull request${B}; open one with ${J} pr create, or resolve the frontier from a branch whose chain is fully submitted`)}if(Z.length>1)throw new P(`branch ${$} has multiple pull requests (${Z.map((B)=>`#${B.pr}`).join(", ")}); close the stale ones first`);return H}function g0({branch:$,forge:J,executable:z,repo:Y,localRepository:X}){return m$({filter:"--base",branch:$,forge:J,executable:z,repo:Y,localRepository:X}).local.filter((Z)=>Z.state==="OPEN")}function h({args:$,repo:J}){return c$({command:"git",args:$,repo:J}).trim()}function u0({branch:$,repo:J}){let z=h({args:["rev-parse","--verify",`refs/heads/${$}^{commit}`],repo:J});if(!/^[0-9a-f]{40,64}$/i.test(z))throw new P(`git rev-parse ${$} returned an invalid SHA`);return z}function c0($){return h({args:["symbolic-ref","HEAD"],repo:$}).replace(/^refs\/heads\//,"")}function m0({branch:$,repo:J}){let z=(B)=>{try{return h({args:["config","--get",B],repo:J})||null}catch{return null}},Y=z(`branch.${$}.pushRemote`)??z("remote.pushDefault")??z(`branch.${$}.remote`)??"origin",X;try{X=h({args:["remote","get-url","--push",Y],repo:J})}catch{throw new P(`branch ${$} has no push remote (remote ${Y} has no URL), so the chain cannot tell which pull requests are the checkout's own`)}let Z=/([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(X),G=Z?.[1],H=Z?.[2];if(G===void 0||H===void 0)throw new P(`remote ${Y} URL ${X} does not name a repository`);return`${G}/${H}`.toLowerCase()}function d0($){try{return h({args:["symbolic-ref","--short","refs/remotes/origin/HEAD"],repo:$}).replace(/^origin\//,"")}catch{return"main"}}function l0({repo:$,forge:J,executable:z}){let Y=d0($),X=c0($);if(X===Y)return[];let Z=u$[J].headRepositoryField===void 0?null:m0({branch:X,repo:$}),G=new Set([X]),H=f$({branch:X,forge:J,executable:z,repo:$,localRepository:Z}),B=[H];while(H.base!==Y){if(G.has(H.base))throw new P(`pull request base chain loops at branch ${H.base}`);G.add(H.base),H=f$({branch:H.base,forge:J,executable:z,repo:$,localRepository:Z}),B.unshift(H)}let T=X;for(;;){let Q=g0({branch:T,forge:J,executable:z,repo:$,localRepository:Z}),_=Q[0];if(_===void 0)break;if(Q.length>1)throw new P(`stack is not linear: branches ${Q.map((S)=>S.branch).join(", ")} all target ${T}`);if(G.has(_.branch))throw new P(`pull request base chain loops at branch ${_.branch}`);G.add(_.branch),B.push(_),T=_.branch}if(new Set(B.map((Q)=>Q.pr)).size!==B.length)throw new P("pull request base chain contains duplicate pull requests");return B.map((Q)=>({pr:Q.pr,branches:Q.branch,sha:u0({branch:Q.branch,repo:$}),state:Q.state}))}function p0({actual:$,expected:J}){if($.length===J.length&&$.every((H,B)=>H===J[B]))return;let z=new Set($),Y=new Set(J),X=J.filter((H)=>!z.has(H)),Z=$.filter((H)=>!Y.has(H)),G=[];if(X.length>0)G.push(`missing from resolved chain: ${X.join(",")}`);if(Z.length>0)G.push(`extra in resolved chain: ${Z.join(",")}`);if(X.length===0&&Z.length===0)G.push(`order differs: expected ${J.join(",")}; resolved ${$.join(",")}`);throw new P(`frontier pin mismatch: ${G.join("; ")}`)}function d$($,J={}){let z=D$($),Y=!1,X=null,Z=null,G=()=>{if(Y)throw new P("store is closed")},H=async()=>{if(G(),X!==null)return;if(Z===null)Z=U0(z,J).then((T)=>{X=T});try{await Z}catch(T){throw Z=null,T}},B=async()=>{if(G(),!await i(z))throw new P(`store is not initialized at ${z}; run orch init`);await H()};return{units:{add:async(T)=>{await B();let Q={id:W(T.id,"unit id"),track:W(T.track,"track"),state:"pending",branch:"",pr:"",sha:"",brief:T.brief===void 0?"":W(T.brief,"brief")},_=[...await f(z)];if(_.some((S)=>S.id===Q.id))throw new P(`unit ${Q.id} already exists`);return _.push(Q),await A$(z,_),Q},set:async(T)=>{await B();let Q=W(T.id,"unit id"),_=W(T.state,"state"),S=[...await f(z)],M=S.findIndex((N)=>N.id===Q),q=S[M];if(M<0||q===void 0)throw new O(`unit ${Q} not found`);let V={...q,state:_,branch:T.branch===void 0?q.branch:W(T.branch,"branch"),pr:T.pr===void 0?q.pr:String(u(T.pr,"PR")),sha:T.sha===void 0?q.sha:W(T.sha,"SHA")};return S[M]=V,await A$(z,S),V},get:async(T)=>{G();let Q=W(T,"unit id"),_=(await f(z)).find((S)=>S.id===Q);if(_===void 0)throw new O(`unit ${Q} not found`);return _},list:async(T={})=>{G();let Q=T.state===void 0?void 0:W(T.state,"state"),_=T.track===void 0?void 0:W(T.track,"track");return(await f(z)).filter((S)=>(Q===void 0||S.state===Q)&&(_===void 0||S.track===_))},counts:async()=>{return G(),s((await f(z)).map((T)=>T.state))}},ledger:{record:async(T)=>{await B();let Q=S$(T.verdict),_={pr:String(u(T.pr,"PR")),sha:W(T.sha,"SHA"),verdict:Q,evidence:W(T.evidence,"evidence"),verifier:T.verifier===void 0?"":W(T.verifier,"verifier"),ts:new Date().toISOString()},S=[...await c(z)],M=S.findIndex((q)=>q.pr===_.pr&&q.sha===_.sha);if(M<0)S.push(_);else S[M]=_;return await O0(z,S),_},check:async(T)=>{G();let Q=String(u(T.pr,"PR")),_=W(T.sha,"SHA"),S=(await c(z)).find((M)=>M.pr===Q&&M.sha===_);if(S===void 0)throw new O("NOT-VERIFIED",{compact:"NOT-VERIFIED",json:{pr:Q,sha:_,verdict:"NOT-VERIFIED"}});return S},summary:async()=>{return G(),s((await c(z)).map((T)=>T.verdict))}},inbox:{push:async(T)=>{await B();let Q={ts:new Date().toISOString(),agent:W(T.agent,"agent"),unit:W(T.unit,"unit"),status:W(T.status,"status"),report:T.report===void 0?"":W(T.report,"report")},_=L(z,"inbox");if(!await i(_))throw new P(`store is not initialized at ${z}; run orch init`);let M=`${Q.ts.replace(/[:.]/g,"-")}-${process.pid}-${w()}.tsv`,q=`${k0(Q).map(x$).join("\t")}
+`;return await F(L(_,M),q),{pointer:Q,filename:M}},drain:async()=>{await B();let T=L(z,"inbox"),Q=await Z$(T),_=L(z,`.inbox-drain-${process.pid}-${w()}`);await v(T,_);try{await l(T)}catch(S){throw await v(_,T),S}return await n(_,{recursive:!0,force:!0}),Q},peek:async()=>{return G(),Z$(L(z,"inbox"))},count:async()=>{return G(),(await Z$(L(z,"inbox"))).length}},gates:{park:async(T)=>{await B();let Q={kind:"open",id:A(T.id,"gate id"),question:A(T.question,"question"),options:A(T.options,"options"),defaultAnswer:A(T.defaultAnswer,"default")},_=[...await m(z)],S=_.findIndex((M)=>M.id===Q.id);if(S<0)_.push(Q);else _[S]=Q;return await F(L(z,"gates.md"),F$(_)),Q},list:async()=>{return G(),(await m(z)).filter((T)=>T.kind==="open")},resolve:async(T)=>{await B();let Q=A(T.id,"gate id"),_=[...await m(z)],S=_.findIndex((V)=>V.id===Q),M=_[S];if(S<0||M===void 0)throw new O(`gate ${Q} not found`);let q={kind:"resolved",id:M.id,question:M.question,options:M.options,defaultAnswer:M.defaultAnswer,answer:A(T.answer,"answer")};return _[S]=q,await F(L(z,"gates.md"),F$(_)),q}},frontier:{set:async(T)=>{await B();let Q=D$(A(T.repo,"repo directory")),_=v0(T.forge??"gh"),S=T.prs===void 0?void 0:T.prs.map((N)=>u(N,"PR"));if(S!==void 0&&new Set(S).size!==S.length)throw new P("--prs must not contain duplicates");let M=await T$(z),q=l0({repo:Q,forge:_,executable:{path:J.forgePaths?.[_]??_,timeout:J.forgeTimeoutMs??y0}});if(S!==void 0)p0({actual:q.map((N)=>N.pr),expected:S});let V={generation:M.generation+1,prs:q,lowestUnmerged:q.find((N)=>N.state==="OPEN")?.pr??null};return await F(L(z,"frontier.json"),`${JSON.stringify(V,null,2)}
+`),V},show:async()=>{return G(),T$(z)}},standing:{show:async()=>{return G(),U$(z)},add:async(T)=>{await B();let Q=[...await U$(z)],_={number:Q.length+1,line:A(T.line,"standing order")};return Q.push(_),await F(L(z,"preferences.md"),`${Q.map((S)=>`${S.number}. ${S.line}`).join(`
+`)}
+`),_}},status:{render:async()=>{await B();let T=await f(z),Q=await c(z),_=await T$(z),S=await m(z),M=E0(T,Q,_,S),q=L(z,"status.md"),V=await i(q)?C0(await E(q,"utf8")):null,N=x0(V,M);return await F(q,w0(T,Q,_,S,M)),{units:T,ledger:Q,frontier:_,gates:S,summary:M,changed:N}}},init:async()=>{return G(),await l(z,{recursive:!0}),await H(),await b(L(z,"units.tsv"),`${B$}
+`),await b(L(z,"ledger.tsv"),`${H$}
+`),await l(L(z,"inbox"),{recursive:!0}),await b(L(z,"gates.md"),""),await b(L(z,"preferences.md"),""),await b(L(z,"frontier.json"),`{}
+`),{store:z}},close:async()=>{if(Y)return;if(Z!==null)try{await Z}catch{}let T=X;if(X=null,Y=!0,T!==null)await T()}}}var T0=j0(Z0(),1),{program:XJ,createCommand:ZJ,createArgument:TJ,createOption:QJ,CommanderError:Q0,InvalidArgumentError:V$,InvalidOptionArgumentError:GJ,Command:G0,Argument:BJ,Option:r,Help:HJ}=T0.default;var J$=4;function w1($){return $ instanceof Error?$.message:String($)}function z$($){let J=Number($);if(!/^[1-9]\d*$/.test($)||!Number.isSafeInteger(J))throw new V$("must be a positive integer");return J}function v1($){let J=$.split(",");if(J.some((z)=>z.length===0))throw new V$("requires a comma-separated PR list");return J.map(z$)}function Y$($){let J=Object.entries($);return J.length===0?"none":J.map(([z,Y])=>`${z}=${Y}`).join(", ")}function e($){return[$.id,$.track,$.state,$.branch,$.pr,$.sha,$.brief].join("\t")}function h1($){return[$.ts,$.agent,$.unit,$.status,$.report].join("\t")}function g1($){return[$.id,$.question,$.options,$.defaultAnswer].join("\t")}function $$($,J,z,Y=J$){if($.length===0)return z;let Z=(Y===null?$:$.slice(0,Y)).map(J);if(Y!==null&&$.length>Y)Z.push(`... ${$.length-Y} more; use --json`);return Z.join(`
+`)}function B0($){let J=$.prs.length===0?"none":$.prs.map((z)=>`${z.branches}#${z.pr}@${z.sha}:${z.state}`).join(",");return`generation=${$.generation} prs=${J} lowest-unmerged=${$.lowestUnmerged??"none"}`}function u1($){let J=$.summary.openGateIds.slice(0,J$),z=$.summary.openGateIds.length>J$?`,+${$.summary.openGateIds.length-J$} more`:"";return[`counts: units=${$.units.length}; states=${Y$($.summary.unitStates)}; ledger=${Y$($.summary.ledgerVerdicts)}`,`changed: ${$.changed}`,`gates open: ${$.summary.openGateIds.length}${J.length>0?`; ids=${J.join(",")}${z}`:""}`].join(`
+`)}function H0($,J,z,Y,X=(Z)=>Z){let Z=J?JSON.stringify(X(z),null,2):Y(z);$.stdout(Z.endsWith(`
+`)?Z:`${Z}
+`)}function _0($){let J=$.opts().store;if(J===void 0||J.trim().length===0)throw new C("set --store <dir> or ORCH_STORE");return J}function c1($){let J=$.repo;if(J===void 0||J.trim().length===0)throw new C("set --repo <dir> or ORCH_REPO");return J}async function I($,J,z,Y,X){let Z=$.opts(),G=d$(_0($),{force:Z.force,onLockStolen:(H)=>J.stderr(`stealing store lock held by pid ${H}
+`),onStaleLock:(H)=>J.stderr(`replacing stale store lock (pid ${H} is dead)
+`)});try{let H=await z(G);H0(J,Z.json,H,Y,X)}finally{await G.close()}}function j($,J,z){return $.command(J).description(z).allowExcessArguments(!1)}function k($){throw _0($),new C("a valid command is required")}function m1($){let J=new G0("orch").description("Plain-file orchestrate bookkeeping").usage("[--store <dir>] [--json] [--force] <command>").configureOutput({writeOut:$.stdout,writeErr:$.stderr}).exitOverride().showHelpAfterError().allowExcessArguments(!1).addOption(new r("--store <dir>","store directory (or ORCH_STORE)").env("ORCH_STORE")).option("--json","print complete rows as JSON",!1).option("--force","steal an existing store lock",!1);j(J,"init","initialize the store").action(()=>I(J,$,(B)=>B.init(),(B)=>`initialized ${B.store}`));let z=J.command("unit").description("manage work units").action(()=>k(J));j(z,"add <id>","add a unit").requiredOption("--track <track>","unit track").option("--brief <path>","brief path").action((B,T)=>I(J,$,(Q)=>Q.units.add({id:B,track:T.track,brief:T.brief}),e)),j(z,"set <id>","update a unit").requiredOption("--state <state>","unit state").option("--branch <branch>","branch name").option("--pr <number>","pull request number",z$).option("--sha <sha>","commit SHA").action((B,T)=>I(J,$,(Q)=>Q.units.set({id:B,state:T.state,branch:T.branch,pr:T.pr,sha:T.sha}),e)),j(z,"get <id>","get a unit").action((B)=>I(J,$,(T)=>T.units.get(B),e)),j(z,"list","list units").option("--state <state>","filter by state").option("--track <track>","filter by track").action((B)=>I(J,$,(T)=>T.units.list(B),(T)=>$$(T,e,"(no units)"))),j(z,"counts","count units by state").action(()=>I(J,$,(B)=>B.units.counts(),Y$));let Y=J.command("ledger").description("manage verification records").action(()=>k(J));j(Y,"record","record a verification verdict").argument("<pr>","pull request number",z$).argument("<sha>","commit SHA").argument("<verdict>","verification verdict",S$).requiredOption("--evidence <path>","evidence path").option("--verifier <name>","verifier name").action((B,T,Q,_)=>I(J,$,(S)=>S.ledger.record({pr:B,sha:T,verdict:Q,evidence:_.evidence,verifier:_.verifier}),(S)=>`${S.pr}	${S.sha}	${S.verdict}`)),j(Y,"check","check a verification verdict").argument("<pr>","pull request number",z$).argument("<sha>","commit SHA").action((B,T)=>I(J,$,(Q)=>Q.ledger.check({pr:B,sha:T}),(Q)=>Q.verdict)),j(Y,"summary","count verification verdicts").action(()=>I(J,$,(B)=>B.ledger.summary(),Y$));let X=J.command("inbox").description("manage agent pointers").action(()=>k(J));j(X,"push <agent> <unit> <status>","push an inbox pointer").option("--report <path>","report path").action((B,T,Q,_)=>I(J,$,(S)=>S.inbox.push({agent:B,unit:T,status:Q,report:_.report}),(S)=>`${S.pointer.unit}	${S.pointer.status}	${S.filename}`,(S)=>S.pointer)),j(X,"drain","drain inbox pointers").option("--peek","read without draining",!1).action((B)=>I(J,$,(T)=>B.peek?T.inbox.peek():T.inbox.drain(),(T)=>$$(T,h1,"(empty)",null))),j(X,"count","count inbox pointers").action(()=>I(J,$,(B)=>B.inbox.count(),String,(B)=>({count:B})));let Z=J.command("gate").description("manage decision gates").action(()=>k(J));j(Z,"park <id>","park a decision gate").requiredOption("--question <question>","gate question").requiredOption("--options <options>","gate options").requiredOption("--default <answer>","default answer").action((B,T)=>I(J,$,(Q)=>Q.gates.park({id:B,question:T.question,options:T.options,defaultAnswer:T.default}),(Q)=>`${Q.id}	open`)),j(Z,"list","list open decision gates").action(()=>I(J,$,(B)=>B.gates.list(),(B)=>$$(B,g1,"(no open gates)"))),j(Z,"resolve <id>","resolve a decision gate").requiredOption("--answer <answer>","chosen answer").action((B,T)=>I(J,$,(Q)=>Q.gates.resolve({id:B,answer:T.answer}),(Q)=>`${Q.id}	resolved	${Q.answer}`));let G=J.command("frontier").description("manage the stack frontier").action(()=>k(J));j(G,"set","resolve the pull request base chain and set the frontier").addOption(new r("--repo <dir>","repository directory (or ORCH_REPO)").env("ORCH_REPO")).addOption(new r("--forge <forge>","pull request forge").choices(["gh","origin"]).default("gh")).option("--prs <n,...>","optional expected pull request order pin",v1).action((B)=>I(J,$,(T)=>T.frontier.set({repo:c1(B),forge:B.forge,prs:B.prs}),B0)),j(G,"show","show the frontier").action(()=>I(J,$,(B)=>B.frontier.show(),B0)),j(J,"status","render status.md and print a summary").action(()=>I(J,$,(B)=>B.status.render(),u1));let H=J.command("standing").description("manage standing orders").action(()=>k(J));return j(H,"show","show standing orders").action(()=>I(J,$,(B)=>B.standing.show(),(B)=>$$(B,(T)=>`${T.number}. ${T.line}`,"(no standing orders)"))),j(H,"add <line>","add a standing order").action((B)=>I(J,$,(T)=>T.standing.add({line:B}),(T)=>`${T.number}. ${T.line}`)),J.action(()=>k(J)),J}function d1($,J,z){if($ instanceof Q0)return $.exitCode===0?0:1;let Y=J.opts().json;if($ instanceof O){let X=$.output;if(X===void 0)z.stderr(`error: ${$.message}
+`);else H0(z,Y,X.json,()=>X.compact);return 2}if(z.stderr(`error: ${w1($)}
+`),$ instanceof C)z.stderr(J.helpInformation());return 1}async function l1($,J={stdout:(z)=>process.stdout.write(z),stderr:(z)=>process.stderr.write(z)}){let z=m1(J);try{return await z.parseAsync($,{from:"user"}),0}catch(Y){return d1(Y,z,J)}}if(import.meta.main)process.exitCode=await l1(process.argv.slice(2));export{l1 as main};

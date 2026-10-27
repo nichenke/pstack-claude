@@ -169,7 +169,7 @@ Install dependencies for the workflows you use:
 | Dependency | When you need it |
 | --- | --- |
 | GitHub CLI, `gh` | PR monitoring, shipping, and the `orch` stack frontier. Authenticate with `gh auth login`. The playbooks use Origin's CLI, `origin`, instead when it can resolve the repository. |
-| Bun | The bundled `watch-pr` and `orch` scripts. Their bootstrap installs script dependencies on first run. |
+| Bun | Runs the bundled `watch-pr`, `ship-pr`, and `orch` commands. Their dependencies are included, so execution needs no package installation. |
 | `plugin-dev` | Claude Code skill-authoring guidance used by `automate-me`, `reflect`, and `poteto-mode`. |
 
 Install the Claude Code skill-authoring companion with:
@@ -213,15 +213,19 @@ The [generator](../tools/generate.mjs) updates versions, model defaults, Codex p
 
 [Documentation fact tests](../tests/readme-facts.test.mjs) check the skill counts and upstream pin. The table parser requires the header `| command | use it when |`.
 
-Run the generator and repository tests with Bun:
+Run the generator and repository tests with Bun 1.3.14:
 
 ```shell
 bun install --frozen-lockfile
+cd tools/cli
+bun install --frozen-lockfile
+cd ../..
+bun tools/build-cli.mjs --check
 bun tools/generate.mjs
 bun test tests/
 ```
 
-The install step reads the root `bun.lock` and fetches `typebox`, which the Pi extension and its tests import.
+The root install reads `bun.lock` and fetches `typebox`, which the Pi extension and its tests import. The `tools/cli` install supplies build and test dependencies for the scripts. `tools/build-cli.mjs` generates the installed runtime files; its `--check` form reports stale output without writing.
 
 CI also checks shell scripts, workflows, Markdown, relative links, and the bundled Bun tools. See [local checks](../CONTRIBUTING.md#things-that-will-fail-ci) for commands and [release instructions](../CONTRIBUTING.md#releasing) for versioning and the live Claude Code command check.
 
