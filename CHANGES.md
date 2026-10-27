@@ -2,6 +2,10 @@
 
 This file is the release changelog, with one `## <version> - <title>` entry per release, newest first. The Cursor-to-Claude rewrite rules live in [`tools/substitutions.json`](tools/substitutions.json), and the [sync boundary](CONTRIBUTING.md#the-sync-boundary) in `CONTRIBUTING.md` defines how a change to upstream's skill content is declared.
 
+## 0.9.91 - CLI bootstrap preserves Codex hook trust
+
+`orch`, `watch-pr`, and `ship-pr` load Commander from a user cache outside the installed plugin. Their first invocation previously installed dependencies inside the plugin, changing the fingerprint Codex uses for native hook trust. The cache uses the package manifest and lockfile hash, and concurrent first invocations publish only complete installations. Command paths and arguments stay the same.
+
 ## 0.9.90 - the run gate holds only its own session's list, and not while background agents run
 
 Two false positives in the 0.9.89 Stop hook. The [2026-10-16 re-run](docs/analysis/2026-10-16-run-gate-eval-rerun-analysis.md) found concurrent sessions sharing one `todo.md`, because `open-run.mjs` answered a second session with `exists; left as is` and the hook then held each session on steps another owned. An interactive session that stopped to wait for background subagents was held on steps those subagents were still doing.

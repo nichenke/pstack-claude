@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { Command, CommanderError } from "commander";
+import { loadCommander } from "../bootstrap.ts";
 import { WatchDeadline } from "./deadline.ts";
 import { runJson } from "./github.ts";
 import { object, parseContext } from "./landing.ts";
@@ -10,6 +10,8 @@ import {
   parseLandingRecord,
   type ShippingResult,
 } from "./shipping.ts";
+
+const { Command, CommanderError } = await loadCommander();
 
 export async function main(argv: readonly string[]): Promise<number> {
   let result: ShippingResult | undefined;
