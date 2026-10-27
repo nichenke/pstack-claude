@@ -122,7 +122,7 @@
     },
     "plugins/pstack/skills/poteto-mode/scripts/bootstrap.ts": {
       "kind": "policy",
-      "why": "Exits with a clear message when run without bun and installs production dependencies without re-executing itself.",
+      "why": "Exits with a clear message when run without bun and loads Commander explicitly from an external cache keyed by package.json and bun.lock, publishing each install by atomic rename from its own staging directory so concurrent first calls leave the installed plugin unchanged.",
       "since": "0.9.11",
       "upstream": "not-proposed"
     },
@@ -142,6 +142,12 @@
       "kind": "policy",
       "why": "Covers the guards the port adds to orch/store.ts: single-line table cells and frontier SHAs from exact branch refs when a same-named tag points elsewhere or survives its deleted branch, a pull request from another repository or a deleted fork that shares a stack branch's name, a stack pushed from the checkout's fork through the branch's push remote, a checkout whose branch has no push remote, the --limit on every gh pr list call, injecting the fake forge through the store's forgePaths option instead of rewriting PATH and giving the CLI only PATH and ORCH_STORE instead of the whole environment. For the stale-lock takeover it races two processes for a stale lock to show only one replaces it, refuses every writer, forced or not, while a live writer holds the takeover claim, pauses a second process at its unlink of the lock to show a forced writer is refused mid-takeover, pauses a holder at the unlink of its release to show a forced writer is refused there too, kills one there to show the next writer clears its claim, removes the lock there to show the takeover carries on, and pauses one after it has listed a dead claimant to show it leaves alone a claim made since. Kills a writer after every lock call, with and without a stale lock, to show the next writer gets in, fails the hard link to show the exclusive open still refuses a live lock, plants and removes a rival lock between a failed create and the read to show the create is retried, and points the lock at a missing file to show the retry ends. Expects unit add to return ids and tracks as written, round-trips unit cells and inbox pointers that start with a formula or quote character and pins their quoted form on disk, reads rows written before the quote was stripped without dropping a leading quote, and times out the gh pr list --head and --base calls against a forge that ignores SIGTERM, with a budget a saturated machine can meet.",
       "since": "0.9.47",
+      "upstream": "not-proposed"
+    },
+    "plugins/pstack/skills/poteto-mode/scripts/orch/orch.ts": {
+      "kind": "port-feature",
+      "why": "Loads Commander through the external dependency cache instead of resolving it from the installed plugin.",
+      "since": "0.9.91",
       "upstream": "not-proposed"
     },
     "plugins/pstack/skills/poteto-mode/scripts/orch/store.ts": {
@@ -164,7 +170,7 @@
     },
     "plugins/pstack/skills/poteto-mode/scripts/watch-pr/cli.ts": {
       "kind": "policy",
-      "why": "Threads one WatchDeadline through discovery, commands, and polling, reports a deadline verdict instead of throwing, rejects an --interval longer than one timer can sleep, and says in its help that --interval does not shorten the 60 second no-checks confirmation and that exit 0 from --status-only does not mean ready.",
+      "why": "Loads Commander through the external dependency cache, threads one WatchDeadline through discovery, commands, and polling, reports a deadline verdict instead of throwing, rejects an --interval longer than one timer can sleep, and says in its help that --interval does not shorten the 60 second no-checks confirmation and that exit 0 from --status-only does not mean ready.",
       "since": "0.9.24",
       "upstream": "not-proposed"
     },
@@ -202,6 +208,12 @@
       "kind": "policy",
       "why": "Renders the review-required, behind-base, and merge-blocked states as status cells and as merge-gate blockers with their next action, and shows a PR with no checks configured as a no-checks cell and a checks=none line on its READY verdict, with a first sighting as its own cell, WAITING line, and TIMEOUT line, and mergeability GitHub has not computed as its own Merge cell, WAITING line, and TIMEOUT line, words a retry after the PR changed mid-read as that and not as a failed query, and tells a caller whose command could not run to install it.",
       "since": "0.9.43",
+      "upstream": "not-proposed"
+    },
+    "plugins/pstack/skills/poteto-mode/scripts/watch-pr/watch-pr": {
+      "kind": "port-feature",
+      "why": "Imports the CLI directly because the CLI loads Commander through the external dependency cache.",
+      "since": "0.9.91",
       "upstream": "not-proposed"
     },
     "plugins/pstack/skills/poteto-mode/scripts/watch-pr/types.compile.ts": {

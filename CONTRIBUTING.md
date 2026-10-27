@@ -90,6 +90,8 @@ If you touched `plugins/pstack/hooks/`, `copilot-tools.md`, or `setup-pstack`, r
 
 If you touched `skills/poteto-mode/scripts/`:
 
+At runtime, `orch`, `watch-pr`, and `ship-pr` load Commander from `$XDG_CACHE_HOME/pstack/poteto-mode-tools/`, falling back to `~/.cache/pstack/poteto-mode-tools/`. The cache key hashes `package.json` and `bun.lock`. Each install runs in its own staging directory and publishes the completed directory by atomic rename, so the commands leave the installed plugin unchanged.
+
 ```shell
 cd plugins/pstack/skills/poteto-mode/scripts
 bun install --frozen-lockfile
