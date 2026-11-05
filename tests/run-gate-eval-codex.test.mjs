@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { scoreCodex } from "../evals/run-gate/score-codex.mjs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { childRollouts, scoreCodex } from "../evals/run-gate/score-codex.mjs";
 
 // Shapes copied from codex-cli 0.165.0 `exec --json` output and its rollout file.
 const THREAD = "01a1ae09-c8f1-78f3-ba8c-6c7e8651b1e1";
@@ -38,7 +41,7 @@ describe("scoreCodex", () => {
     expect(s.firstEditSeen).toBe(true);
     expect(s.result).toEqual({ ok: true, turns: null, ms: null, usd: null });
     expect(s.tokens).toEqual(done.usage);
-    expect(s.delegatesInFlight).toBe(null);
+    expect(s.delegatesInFlight).toBe(0);
   });
 
   test("a brace list of SKILL.md paths reads each skill in it", () => {
@@ -90,5 +93,35 @@ describe("scoreCodex", () => {
     expect(scoreCodex([started, { type: "turn.failed", error: { message: "x" } }]).result.ok).toBe(false);
     expect(scoreCodex([started, item({ type: "error", message: "stream disconnected" }), done]).result.ok).toBe(false);
     expect(scoreCodex([started]).result.ok).toBe(false);
+  });
+});
+
+describe("Codex delegates", () => {
+  const task = (type) => ({ type: "event_msg", payload: { type } });
+
+  test("a delegate whose last task event is a start was still in flight when the run ended", () => {
+    const abandoned = [task("task_started"), task("task_started")];
+    const finished = [task("task_started"), task("task_complete")];
+    const s = scoreCodex([started, done], [], [abandoned, finished]);
+    expect(s.delegatesInFlight).toBe(1);
+    expect(s.delegates).toBe(2);
+    expect(scoreCodex([started, done]).delegatesInFlight).toBe(0);
+  });
+
+  test("childRollouts follows parent_thread_id down from the run's thread, and skips other runs' threads", () => {
+    const sessions = mkdtempSync(join(tmpdir(), "sessions-"));
+    mkdirSync(join(sessions, "2026/11/05"), { recursive: true });
+    const rollout = (id, parent) => {
+      const file = join(sessions, "2026/11/05", `rollout-x-${id}.jsonl`);
+      writeFileSync(file, `${JSON.stringify({ type: "session_meta", payload: { id, ...(parent ? { parent_thread_id: parent } : {}) } })}\n`);
+      return file;
+    };
+    rollout("main");
+    const child = rollout("child", "main");
+    const grandchild = rollout("grandchild", "child");
+    rollout("other");
+    rollout("other-child", "other");
+    expect(childRollouts(sessions, "main").sort()).toEqual([child, grandchild].sort());
+    expect(childRollouts(join(sessions, "missing"), "main")).toEqual([]);
   });
 });

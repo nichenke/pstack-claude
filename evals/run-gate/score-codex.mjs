@@ -1,4 +1,5 @@
 // Scores one `codex exec --json` run into the shape scoreStream returns for a Claude Code run.
+import fs from "node:fs";
 import path from "node:path";
 import { OPENED, RUN_FILE, TODO_FILE } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 import { openRunPlaybook, taskCounts, TODO_REDIRECT } from "./score-common.mjs";
@@ -15,10 +16,12 @@ const HOOK_TRUST_WARNING = /dangerously-bypass-hook-trust/;
  * which alone records three things: each Stop hook block (a HookPrompt item), whether `update_plan`
  * was offered (code mode declares it inside the `exec` tool), and each `spawn_agent` call, which
  * code mode holds only as JavaScript source.
- * Codex reports no background work, so `delegatesInFlight` is null and `delegates` counts launches.
+ * `children` are the rollouts of the delegates it spawned, each a list of parsed lines; one whose
+ * last task event is a start was still running when the run ended, since `codex exec` exits when
+ * the main turn does without waiting for them. `delegates` counts launches.
  * A skill counts as run when a command read its SKILL.md, since Codex has no skill tool.
  */
-export function scoreCodex(events, rollout = []) {
+export function scoreCodex(events, rollout = [], children = []) {
   let index = 0;
   let list = null;
   let firstEdit = null;
@@ -113,8 +116,8 @@ export function scoreCodex(events, rollout = []) {
     taskTools: taskTools || todos !== null,
     taskList: taskCounts(native),
     native: native.length ? native : null,
-    delegatesInFlight: null,
-    delegates,
+    delegatesInFlight: children.filter(running).length,
+    delegates: Math.max(delegates, children.length),
     skills,
     commands,
     trails,
@@ -122,4 +125,44 @@ export function scoreCodex(events, rollout = []) {
     tokens,
     result: { ok: completed && !failed, turns: null, ms: null, usd: null },
   };
+}
+
+const TASK_EVENTS = new Set(["task_started", "task_complete"]);
+const running = (lines) => lines.filter((e) => e?.type === "event_msg" && TASK_EVENTS.has(e.payload?.type)).at(-1)?.payload.type === "task_started";
+
+function sessionMeta(file) {
+  const fd = fs.openSync(file, "r");
+  try {
+    const buffer = Buffer.alloc(1 << 16);
+    const first = buffer.toString("utf8", 0, fs.readSync(fd, buffer, 0, buffer.length, 0)).split("\n")[0];
+    const entry = JSON.parse(first);
+    return entry.type === "session_meta" ? entry.payload : null;
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * The rollout files under a Codex home's `sessions` dir that descend from `thread`, through each
+ * one's `session_meta.parent_thread_id`, so a delegate's own delegates count too.
+ */
+export function childRollouts(sessions, thread) {
+  const files = fs.existsSync(sessions)
+    ? fs.readdirSync(sessions, { recursive: true }).map(String).filter((f) => /rollout-.*\.jsonl$/.test(f)).map((f) => path.join(sessions, f))
+    : [];
+  const metas = files.map((file) => ({ file, meta: sessionMeta(file) })).filter(({ meta }) => meta);
+  const family = new Set([thread]);
+  const found = [];
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const { file, meta } of metas)
+      if (!family.has(meta.id) && family.has(meta.parent_thread_id)) {
+        family.add(meta.id);
+        found.push(file);
+        grew = true;
+      }
+  }
+  return found;
 }

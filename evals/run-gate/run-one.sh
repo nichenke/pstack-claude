@@ -37,8 +37,10 @@ run_tmp=$(mktemp -d -p "$work_root/.tmp")
 
 jq -n --arg task "$task" --arg runtime "$runtime" --arg arm "$arm" --argjson rep "$rep" --arg repo "$repo" \
   --arg plugin "$plugin" --arg model "$model" --argjson minutes "$minutes" --argjson budget "$budget" --arg tmp "$run_tmp" \
+  --arg home "$codex_home" \
   '{task: $task, runtime: $runtime, arm: $arm, rep: $rep, repo: $repo, plugin: $plugin, model: $model,
-    minutes: $minutes, budget: (if $runtime == "claude" then $budget else null end), tmp: $tmp}' \
+    minutes: $minutes, budget: (if $runtime == "claude" then $budget else null end), tmp: $tmp,
+    codexHome: (if $runtime == "codex" then $home else null end)}' \
   >"$run_dir/meta.json"
 
 prompt_text=$(cat "$here/tasks/$task/prompt.txt")

@@ -9,7 +9,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { OPENED, ownedList, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 import { DELEGATE, ENDED, openRunPlaybook, taskCounts, TODO_REDIRECT, WAITING } from "./score-common.mjs";
-import { scoreCodex } from "./score-codex.mjs";
+import { childRollouts, scoreCodex } from "./score-codex.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
@@ -305,11 +305,22 @@ export function trailFrom(s, repo) {
   );
 }
 
+/** The delegate rollouts of a Codex run, copied out of its arm's shared home on first scoring. */
+function codexChildren(runDir, meta, events) {
+  const dir = path.join(runDir, "children");
+  const thread = events.find((e) => e.type === "thread.started")?.thread_id;
+  if (!fs.existsSync(dir) && thread && meta.codexHome) {
+    fs.mkdirSync(dir);
+    for (const file of childRollouts(path.join(meta.codexHome, "sessions"), thread)) fs.copyFileSync(file, path.join(dir, path.basename(file)));
+  }
+  return fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((file) => readLines(path.join(dir, file))) : [];
+}
+
 function scoreRun(runDir) {
   const meta = JSON.parse(fs.readFileSync(path.join(runDir, "meta.json"), "utf8"));
   const runtime = meta.runtime ?? "claude";
   const events = readLines(path.join(runDir, "out.jsonl"));
-  const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl"))) : scoreStream(events);
+  const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl")), codexChildren(runDir, meta, events)) : scoreStream(events);
 
   // The candidate's scratchpad is temporary, so the list and trail are copied out on first scoring.
   const kept = path.join(runDir, "todo.md");
