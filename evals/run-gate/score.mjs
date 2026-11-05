@@ -48,6 +48,7 @@ export function scoreStream(events) {
   const skills = [];
   const commands = [];
   const todoHints = [];
+  const trails = [];
 
   for (const event of events) {
     if (event.type === "system" && event.subtype === "init") {
@@ -118,6 +119,7 @@ export function scoreStream(events) {
       }
       if (block.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
       if (block.name === "Write" && TODO_FILE.test(file)) written ??= file;
+      if ((block.name === "Write" || block.name === "Edit") && /decisions\.tsv$/.test(file)) trails.push(file);
       if (EDITS.has(block.name) && !RUN_FILE.test(file) && firstEdit === null) firstEdit = index;
     }
   }
@@ -143,6 +145,7 @@ export function scoreStream(events) {
     delegates: null,
     skills,
     commands,
+    trails,
     plugin,
     tokens: null,
     result,
@@ -236,14 +239,23 @@ export const checkboxes = (todo) => todo.split("\n").filter((line) => CHECKBOX.t
 
 /**
  * Verbatim fidelity: how many of the playbook's steps (open-run's `- [ ]` lines) appear as list
- * items. An item matches a step when, past its checkbox and step number and with whitespace
- * collapsed, it starts with the step's text, so a `skip:` reason appended to it still matches.
+ * items. Past checkbox and step number, with whitespace collapsed, an item keeps a step when it holds
+ * each of the step's sentences in order, so a `skip:` reason added before, between or after them
+ * still counts, and a reworded or shortened sentence does not.
  */
 export function fidelity(steps, items) {
   if (!steps.length) return null;
   const texts = items.map(normalize);
-  const matched = steps.filter((step) => texts.some((text) => text.startsWith(normalize(step)))).length;
-  return { steps: steps.length, matched };
+  const keeps = (text, step) => {
+    let at = 0;
+    for (const sentence of normalize(step).split(/(?<=[.!?])\s+/)) {
+      const found = text.indexOf(sentence, at);
+      if (found === -1) return false;
+      at = found + sentence.length;
+    }
+    return true;
+  };
+  return { steps: steps.length, matched: steps.filter((step) => texts.some((text) => keeps(text, step))).length };
 }
 
 /**
@@ -276,13 +288,21 @@ function playbookSteps(plugin, playbook) {
   return run.status === 0 ? checkboxes(run.stdout) : [];
 }
 
-/** A native-arm run starts its trail beside no list: in its temp dir, where the scratchpad lives, or the repo's `.audit`. */
-function looseTrail(meta) {
-  const inTmp =
-    meta.tmp && fs.existsSync(meta.tmp)
-      ? fs.readdirSync(meta.tmp, { recursive: true }).map(String).filter((file) => path.basename(file) === "decisions.tsv").map((file) => path.join(meta.tmp, file))
-      : [];
-  return [path.join(meta.repo, ".audit/decisions.tsv"), ...inTmp].find((file) => fs.existsSync(file)) ?? null;
+// A decision trail named in a command, past any `VAR=` prefix.
+const TRAIL = /(?:^|[\s"'=(])([^\s"'|;&<>(){}=]*decisions\.tsv)\b/g;
+
+/**
+ * The trail a run kept when none sits beside its list, as a native-arm run's does: the last
+ * existing decisions.tsv its commands or writes name, a relative one tried in each of the repo's
+ * worktrees, which is where a candidate that works on a branch keeps it.
+ */
+export function trailFrom(s, repo) {
+  const named = [...s.commands.flatMap((command) => [...command.matchAll(TRAIL)].map((m) => m[1])), ...(s.trails ?? [])];
+  return (
+    named
+      .flatMap((file) => (path.isAbsolute(file) ? [file] : worktrees(repo).map((tree) => path.join(tree, file))))
+      .findLast((file) => fs.existsSync(file)) ?? null
+  );
 }
 
 function scoreRun(runDir) {
@@ -306,7 +326,7 @@ function scoreRun(runDir) {
     if (fs.existsSync(sibling)) fs.copyFileSync(sibling, trail);
   }
   if (!fs.existsSync(trail)) {
-    const loose = looseTrail(meta);
+    const loose = trailFrom(s, meta.repo);
     if (loose) fs.copyFileSync(loose, trail);
   }
   const todo = fs.existsSync(kept) ? fs.readFileSync(kept, "utf8") : "";

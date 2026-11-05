@@ -67,12 +67,13 @@ else
   flags=()
   if [[ $arm == native ]]; then flags+=(-c tools.update_plan.enabled=true); fi
   if [[ -n $model ]]; then flags+=(-m "$model"); fi
+  # workspace-write keeps .git read-only, so without --add-dir a candidate cannot commit in its repo.
   # run.sh refuses a codex batch unless CODEX_HOOKS=bypass: the per-batch homes carry no hook trust.
   if [[ ${CODEX_HOOKS:-} == bypass ]]; then flags+=(--dangerously-bypass-hook-trust); fi
   # The env scrub keeps a Claude Code parent's session id out of open-run's session stamp.
   env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_PLUGIN_ROOT \
     CODEX_HOME="$codex_home" TMPDIR="$run_tmp" \
-    timeout "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write \
+    timeout "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write --add-dir "$repo/.git" \
     -c approval_policy='"never"' ${flags[@]+"${flags[@]}"} "\$pstack:poteto-mode $prompt_text" \
     </dev/null >"$run_dir/out.jsonl" 2>"$run_dir/err.log"
 fi

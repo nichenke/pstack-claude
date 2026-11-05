@@ -3,7 +3,8 @@ import path from "node:path";
 import { OPENED, RUN_FILE, TODO_FILE } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 import { openRunPlaybook, taskCounts, TODO_REDIRECT } from "./score-common.mjs";
 
-const SKILL_READ = /\/skills\/([a-z0-9-]+)\/SKILL\.md\b/g;
+// A SKILL.md path, or a brace list of them, as in `cat skills/{deslop,no-comments}/SKILL.md`.
+const SKILL_READ = /\/skills\/(?:([a-z0-9-]+)|\{([a-z0-9-]+(?:,[a-z0-9-]+)*)\})\/SKILL\.md\b/g;
 const PLUGIN_ROOT = /(\/[^\s'"]*?)\/skills\/poteto-mode\//;
 // codex exec reports its own --dangerously-bypass-hook-trust warning as an error item.
 const HOOK_TRUST_WARNING = /dangerously-bypass-hook-trust/;
@@ -34,6 +35,7 @@ export function scoreCodex(events, rollout = []) {
   const skills = [];
   const commands = [];
   const todoHints = [];
+  const trails = [];
 
   for (const event of events) {
     if (event.type === "thread.started") session ??= event.thread_id ?? null;
@@ -57,7 +59,7 @@ export function scoreCodex(events, rollout = []) {
     if (item.type === "command_execution") {
       const command = String(item.command ?? "");
       commands.push(command);
-      for (const [, name] of command.matchAll(SKILL_READ)) skills.push(name);
+      for (const [, name, names] of command.matchAll(SKILL_READ)) skills.push(...(name ? [name] : names.split(",")));
       plugin ??= command.match(PLUGIN_ROOT)?.[1] ?? null;
       for (const match of String(item.aggregated_output ?? "").matchAll(OPENED)) opened.push(match[1]);
       if (/open-run\.mjs\b/.test(command) && /--check\b/.test(command)) checkRan = true;
@@ -70,6 +72,7 @@ export function scoreCodex(events, rollout = []) {
     }
     if (item.type === "file_change") {
       const files = (item.changes ?? []).map((change) => String(change?.path ?? ""));
+      trails.push(...files.filter((file) => /decisions\.tsv$/.test(file)));
       const todo = files.find((file) => TODO_FILE.test(file));
       if (todo) {
         kind ??= "todo.md";
@@ -114,6 +117,7 @@ export function scoreCodex(events, rollout = []) {
     delegates,
     skills,
     commands,
+    trails,
     plugin,
     tokens,
     result: { ok: completed && !failed, turns: null, ms: null, usd: null },

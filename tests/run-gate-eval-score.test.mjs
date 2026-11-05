@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fidelity, gate, outcome, runList, scoreStream, workTree } from "../evals/run-gate/score.mjs";
+import { fidelity, gate, outcome, runList, scoreStream, trailFrom, workTree } from "../evals/run-gate/score.mjs";
 
 const repo = "/work/slugkit-x1";
 let id = 0;
@@ -196,6 +196,7 @@ describe("scoreStream", () => {
     const opened = (command) =>
       scoreStream([init, use("Bash", { command: `node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs ${command}` }), done]).playbook;
     expect(opened("feature /scratch")).toBe("feature");
+    expect(opened("--dry-run bug-fix; echo ---")).toBe("bug-fix");
     expect(opened("--slug logs figure-it-out .audit")).toBe("figure-it-out");
     expect(opened("'.agents/playbooks/ship-it.md' /scratch")).toBe("ship-it");
     expect(scoreStream([init, use("Write", { file_path: "/scratch/todo.md" }), done]).playbook).toBe(null);
@@ -261,6 +262,13 @@ describe("fidelity", () => {
   test("counts each step some item starts with, past checkbox, number and spacing", () => {
     const items = ["- [x] 1.  Reproduce the bug with a failing test.", "Fix the root cause. skip: not reproducible", "Run deslop"];
     expect(fidelity(steps, items)).toEqual({ steps: 3, matched: 2 });
+  });
+
+  test("a reason inserted between a step's sentences still keeps it", () => {
+    const step = "- [ ] 3. Plan the fix. If it crosses a function boundary, `architect` first.";
+    const item = "- [x] 3. Plan the fix. skip: delegation, per the user's rule. If it crosses a function boundary, `architect` first.";
+    expect(fidelity([step], [item])).toEqual({ steps: 1, matched: 1 });
+    expect(fidelity([step], ["- [x] 3. If it crosses a function boundary, `architect` first. Plan the fix."])).toEqual({ steps: 1, matched: 0 });
   });
 
   test("a shortened or reworded item does not match, and no steps means no score", () => {
@@ -341,5 +349,24 @@ describe("workTree", () => {
     git(repo, "worktree", "add", "-q", join(repo, ".worktrees", "idle"), "-b", "idle");
     writeFileSync(join(repo, "a.py"), "x = 9\n");
     expect(workTree(repo)).toEqual({ path: realpathSync(repo), commits: 0 });
+  });
+});
+
+describe("trailFrom", () => {
+  test("finds the last trail a command or write names, a relative one in a worktree under the repo", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "trail-")));
+    const git = (...args) => execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
+    git("init", "-q", "-b", "main");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "root");
+    git("worktree", "add", "-q", ".worktrees/fix", "-b", "fix");
+    mkdirSync(join(dir, ".worktrees/fix/.audit"));
+    writeFileSync(join(dir, ".worktrees/fix/.audit/decisions.tsv"), "h\n");
+    const abs = join(dir, "abs-decisions.tsv");
+    writeFileSync(abs, "h\n");
+    const s = (commands, trails = []) => ({ commands, trails });
+    expect(trailFrom(s(["D=.audit/decisions.tsv && printf x >>$D"]), dir)).toBe(join(dir, ".worktrees/fix/.audit/decisions.tsv"));
+    expect(trailFrom(s([`cp template.tsv '${abs}'`]), dir)).toBe(abs);
+    expect(trailFrom(s([], [abs]), dir)).toBe(abs);
+    expect(trailFrom(s(["cat /nowhere/decisions.tsv"]), dir)).toBe(null);
   });
 });

@@ -41,6 +41,11 @@ describe("scoreCodex", () => {
     expect(s.delegatesInFlight).toBe(null);
   });
 
+  test("a brace list of SKILL.md paths reads each skill in it", () => {
+    const s = scoreCodex([started, exec(`cat ${ROOT}/skills/{no-comments,deslop}/SKILL.md; cat ${ROOT}/skills/tdd/SKILL.md`), done]);
+    expect(s.skills).toEqual(["no-comments", "deslop", "tdd"]);
+  });
+
   test("the native list is the last todo_list state, with a skip reason in a step's text", () => {
     const s = scoreCodex([
       started,

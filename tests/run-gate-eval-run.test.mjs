@@ -141,6 +141,7 @@ describe("run-one.sh", () => {
     const args = argsOf(b, "codex");
     expect(args).toContain("tools.update_plan.enabled=true");
     expect(args).toContain("--dangerously-bypass-hook-trust");
+    expect(args[args.indexOf("--add-dir") + 1]).toMatch(/\/slugkit-[0-9a-f]{6}\/\.git$/);
     expect(args.at(-1)).toStartWith("$pstack:poteto-mode ");
     const run = join(b.root, "batch/runs/slugkit-codex-native-1");
     expect(existsSync(join(run, "rollout.jsonl"))).toBe(true);
