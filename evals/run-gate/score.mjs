@@ -237,7 +237,6 @@ const normalize = (text) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** The text of each checkbox line in a todolist. */
 export const checkboxes = (todo) => todo.split("\n").filter((line) => CHECKBOX.test(line));
 
 /**
@@ -261,11 +260,6 @@ export function fidelity(steps, items) {
   return { steps: steps.length, matched: steps.filter((step) => texts.some((text) => keeps(text, step))).length };
 }
 
-/**
- * A run's outcome: timeout when `timeout` killed it (exit 124), error on any other non-zero exit or
- * a failed or missing result, delegate-in-flight when it ended with a background delegate still
- * running, else clean.
- */
 export function outcome(exit, s) {
   if (exit === 124) return "timeout";
   if (exit !== 0 || !s.result.ok) return "error";
@@ -282,7 +276,6 @@ const readLines = (file) =>
         .map((line) => JSON.parse(line))
     : [];
 
-/** The `- [ ]` lines open-run prints for a bundled playbook, from the arm's own copy of the script. */
 function playbookSteps(plugin, playbook) {
   if (!playbook || playbook.includes("/")) return [];
   const script = path.join(plugin, "skills/poteto-mode/scripts/open-run.mjs");
@@ -291,7 +284,6 @@ function playbookSteps(plugin, playbook) {
   return run.status === 0 ? checkboxes(run.stdout) : [];
 }
 
-// A decision trail named in a command, past any `VAR=` prefix.
 const TRAIL = /(?:^|[\s"'=(])([^\s"'|;&<>(){}=]*decisions\.tsv)\b/g;
 
 /**
@@ -308,7 +300,6 @@ export function trailFrom(s, repo) {
   );
 }
 
-/** The delegate rollouts of a Codex run, copied out of its arm's shared home on first scoring. */
 function codexChildren(runDir, meta, events) {
   const dir = path.join(runDir, "children");
   const thread = events.find((e) => e.type === "thread.started")?.thread_id;
@@ -349,7 +340,6 @@ function scoreRun(runDir) {
     const check = spawnSync(process.execPath, [openRun, "--check", kept], { encoding: "utf8" });
     openSteps = Number(check.stdout.match(/^(\d+) open$/m)?.[1] ?? NaN);
   }
-  // With no todo.md, the gates are read from the native list, as checkbox lines carrying each note.
   const listText = todo || (s.native ?? []).map((item) => `- [${item.done ? "x" : " "}] ${item.text} ${item.note}`.trimEnd()).join("\n");
   const items = todo ? checkboxes(todo) : (s.native ?? []).map((item) => item.text);
   const decisionRows = fs.existsSync(trail)

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Builds the three arms from FORK_REV (default HEAD) under <dest>/<label>/ and prints
 # "arm label plugin codex-home codex-plugin" per line, with - for a Codex column not built.
-#   native     strip-run-gate.sh, then native-arm.mjs: the runtime's task tool, no Stop hook
-#   todo       strip-run-gate.sh: open-run's todo.md, no Stop hook
-#   todo-hook  as is, plus codex-stop.mjs: todo.md and the run-gate Stop hook on both runtimes
 # With --codex, each arm also gets a Codex home under <dest>/<label>/home with the arm installed
 # from a local marketplace, auth.json and AGENTS.md linked from CODEX_AUTH_HOME (default ~/.codex).
 # Labels are random so a candidate's skill base directory names no arm.
@@ -19,11 +16,11 @@ fork_rev=${FORK_REV:-HEAD}
 auth_home=${CODEX_AUTH_HOME:-$HOME/.codex}
 codex_bin=${CODEX_BIN:-codex}
 
-extract() { # rev target-root
+extract() {
   git -C "$repo" archive "$1" plugins/pstack | tar -x -C "$2"
 }
 
-codex_home() { # arm-root
+codex_home() {
   local root=$1 home=$1/home
   mkdir -p "$root/.agents/plugins" "$home"
   jq -n '{name: "local", plugins: [{name: "pstack", source: {source: "local", path: "./plugins/pstack"},

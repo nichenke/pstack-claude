@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Aggregates every runs/*/score.json in a batch into one Markdown table, a column per runtime and arm.
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";

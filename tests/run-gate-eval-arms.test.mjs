@@ -172,7 +172,6 @@ describe("build-arms.sh", () => {
     const auth = mkdtempSync(join(tmpdir(), "auth-"));
     writeFileSync(join(auth, "auth.json"), "{}");
     const codex = join(auth, "codex");
-    // Mimics `codex plugin marketplace add <root>` and `codex plugin add pstack@local`.
     writeFileSync(
       codex,
       `#!/usr/bin/env bash

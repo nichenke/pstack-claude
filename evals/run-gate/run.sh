@@ -55,7 +55,6 @@ jobs=$(for task in "${tasks[@]}"; do
   done
 done | sort -R)
 runs=$(wc -l <<<"$jobs" | tr -d ' ')
-# Claude runs are capped by --max-budget-usd; codex exec has no spend cap, so only the clock bounds it.
 read -r claude_runs codex_runs ceiling codex_minutes < <(awk '
   NR == FNR { minutes[$1] = $2; budget[$1] = $3; next }
   $2 == "claude" { n++; usd += budget[$1] }

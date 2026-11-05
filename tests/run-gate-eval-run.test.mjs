@@ -83,7 +83,6 @@ describe("run.sh", () => {
 });
 
 describe("run-one.sh", () => {
-  // Stub runtimes record the environment and arguments they were started with, then print a stream.
   const stub = (dir, name, stream) => {
     const file = join(dir, name);
     writeFileSync(

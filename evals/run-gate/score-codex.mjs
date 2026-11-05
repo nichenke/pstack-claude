@@ -4,7 +4,6 @@ import path from "node:path";
 import { OPENED, RUN_FILE, TODO_FILE } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 import { openRunPlaybook, taskCounts, TODO_REDIRECT } from "./score-common.mjs";
 
-// A SKILL.md path, or a brace list of them, as in `cat skills/{deslop,no-comments}/SKILL.md`.
 const SKILL_READ = /\/skills\/(?:([a-z0-9-]+)|\{([a-z0-9-]+(?:,[a-z0-9-]+)*)\})\/SKILL\.md\b/g;
 const PLUGIN_ROOT = /(\/[^\s'"]*?)\/skills\/poteto-mode\//;
 // codex exec reports its own --dangerously-bypass-hook-trust warning as an error item.

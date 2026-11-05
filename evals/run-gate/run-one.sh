@@ -4,7 +4,7 @@
 # The batch dir's arms.tsv maps each arm to its plugin tree and Codex home; run.sh writes it.
 # A claude run must start outside any Claude Code sandbox: the candidate starts its own Bash
 # sandbox and writes its transcript under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects, which the
-# Stop hook reads back. A codex run runs under codex's workspace-write sandbox.
+# Stop hook reads back.
 set -euo pipefail
 
 batch=${1:?batch dir} task=${2:?task} runtime=${3:?runtime} arm=${4:?arm} rep=${5:?rep}
@@ -32,7 +32,6 @@ git -C "$repo" init -q -b main
 git -C "$repo" add -A
 GIT_AUTHOR_DATE=2026-09-01T12:00:00Z GIT_COMMITTER_DATE=2026-09-01T12:00:00Z \
   git -C "$repo" -c user.name=dev -c user.email=dev@example.com commit -q -m "Initial import"
-# Concurrent runs share no temp dir, so no run can pick up another's scratch files.
 run_tmp=$(mktemp -d -p "$work_root/.tmp")
 
 jq -n --arg task "$task" --arg runtime "$runtime" --arg arm "$arm" --argjson rep "$rep" --arg repo "$repo" \
@@ -51,8 +50,7 @@ if [[ $runtime == claude ]]; then
   if [[ $arm == native ]]; then native=(CLAUDE_CODE_ENABLE_TODO_TOOLS=1); fi
   (
     cd "$repo"
-    # The settings flag keeps an installed copy of pstack from loading beside the arm. The env
-    # scrub keeps a Codex parent's thread id out of open-run's session stamp.
+    # The settings flag keeps an installed copy of pstack from loading beside the arm.
     env -u CODEX_THREAD_ID -u CODEX_SESSION_ID -u CLAUDE_CODE_ENABLE_TODO_TOOLS TMPDIR="$run_tmp" ${native[@]+"${native[@]}"} \
       timeout "$((minutes * 60))" "${CLAUDE_BIN:-claude}" -p "/pstack:poteto-mode $prompt_text" \
       --plugin-dir "$plugin" \
@@ -70,9 +68,7 @@ else
   if [[ $arm == native ]]; then flags+=(-c tools.update_plan.enabled=true); fi
   if [[ -n $model ]]; then flags+=(-m "$model"); fi
   # workspace-write keeps .git read-only, so without --add-dir a candidate cannot commit in its repo.
-  # run.sh refuses a codex batch unless CODEX_HOOKS=bypass: the per-batch homes carry no hook trust.
   if [[ ${CODEX_HOOKS:-} == bypass ]]; then flags+=(--dangerously-bypass-hook-trust); fi
-  # The env scrub keeps a Claude Code parent's session id out of open-run's session stamp.
   env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_PLUGIN_ROOT \
     CODEX_HOME="$codex_home" TMPDIR="$run_tmp" \
     timeout "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write --add-dir "$repo/.git" \

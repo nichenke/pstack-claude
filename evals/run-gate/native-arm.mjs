@@ -2,8 +2,6 @@
 // Turns a plugin tree that strip-run-gate.sh already stripped into the native arm: the todolist
 // becomes the runtime's own task tool, built from open-run's dry-run output verbatim.
 // Usage: native-arm.mjs <plugin-root>
-// Every anchor is matched before anything is written, so a reworded SKILL.md fails the build with
-// the tree unchanged. Update the anchors here when it does.
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";

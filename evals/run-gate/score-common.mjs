@@ -1,4 +1,3 @@
-// Rules both runtimes' stream scorers share.
 import { RESOLVED } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 // A shell redirect into a *todo*.md file; `2>&1` and plain reads don't match.
@@ -9,13 +8,11 @@ export const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
 export const WAITING = " is waiting on its own background work";
 export const DELEGATE = /agent|workflow/;
 
-/** The playbook an open-run call names, past its flags; a `--check` call names none. */
 export function openRunPlaybook(command) {
   if (!/open-run\.mjs\b/.test(command) || /--check\b/.test(command)) return null;
   return command.match(/open-run\.mjs\s+(?:--(?:slug\s+\S+|dry-run)\s+)*["']?([^\s"';&|)]+)/)?.[1] ?? null;
 }
 
-/** Counts a native list's items: total, open (not completed), and skipped (completed with a reason). */
 export function taskCounts(items) {
   if (!items?.length) return null;
   return {
