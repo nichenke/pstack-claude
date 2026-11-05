@@ -55,9 +55,9 @@ if $dry; then
 fi
 
 # The candidates' transcripts land here and the Stop hook reads them back; a sandboxed shell cannot write it.
-probe="$HOME/.claude/projects/.run-gate-write-probe"
+probe="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/.run-gate-write-probe"
 if ! touch "$probe" 2>/dev/null; then
-  echo "run.sh: cannot write ~/.claude/projects; run this outside Claude Code's sandbox (a terminal, or the ! prompt)." >&2
+  echo "run.sh: cannot write ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects; run this outside Claude Code's sandbox (a terminal, or the ! prompt)." >&2
   exit 2
 fi
 rm -f "$probe"

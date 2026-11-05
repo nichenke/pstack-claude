@@ -29,7 +29,7 @@ The first three averaged 1 to 6 minutes a run in the 2026-10-04 batch, too short
 
 ## Running
 
-Run from a terminal or the `!` prompt, not from a sandboxed Claude Code shell. A candidate starts its own Bash sandbox and writes its transcript under `~/.claude/projects`, where `run-gate.mjs` reads it back. `run.sh` refuses to start when it cannot write there.
+Run from a terminal or the `!` prompt, not from a sandboxed Claude Code shell. A candidate starts its own Bash sandbox and writes its transcript under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`, where `run-gate.mjs` reads it back. `run.sh` refuses to start when it cannot write there.
 
 ```sh
 evals/run-gate/run.sh --smoke      # one hook-arm run of slugkit

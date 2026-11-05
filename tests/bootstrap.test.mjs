@@ -6,7 +6,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scripts = fileURLToPath(new URL("../plugins/pstack/skills/poteto-mode/scripts/", import.meta.url));
-const commands = ["orch/orch.ts", "watch-pr/watch-pr", "watch-pr/ship-pr"];
+const commands = ["watch-pr/watch-pr", "watch-pr/ship-pr"];
 
 function fingerprint(directory) {
   const hash = createHash("sha256");
@@ -76,7 +76,7 @@ test("concurrent first calls and direct imports leave the plugin unchanged", asy
       expect(status, stderr).toBe(0);
       expect(stdout).toContain("Usage:");
     }
-    for (const module of ["orch/orch.ts", "watch-pr/cli.ts", "watch-pr/shipping-cli.ts"]) {
+    for (const module of ["watch-pr/cli.ts", "watch-pr/shipping-cli.ts"]) {
       rmSync(join(root, "cache"), { recursive: true, force: true });
       const result = Bun.spawnSync([
         process.execPath, "--eval",

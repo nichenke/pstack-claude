@@ -3,7 +3,7 @@
 # plugin arm, then score.mjs. Usage: run-one.sh <batch-dir> <task> <arm> <rep>
 # The batch dir's arms.tsv maps each arm to its plugin path; run.sh writes it.
 # Must run outside any Claude Code sandbox: the candidate starts its own Bash sandbox and
-# writes its transcript under ~/.claude/projects, which the Stop hook reads back.
+# writes its transcript under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects, which the Stop hook reads back.
 set -euo pipefail
 
 batch=${1:?batch dir} task=${2:?task} arm=${3:?arm} rep=${4:?rep}
