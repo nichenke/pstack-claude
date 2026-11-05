@@ -87,8 +87,10 @@ function open(playbook, dir, slug, dryRun) {
 	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
 	if (session) body.push(sessionHeader(session), "");
 	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
+	const unwritten = !steps.length && !shipsCode;
+	if (unwritten) body.push(`- [ ] ${name} has no numbered steps. Replace this line with the run's own steps.`);
 	if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
-	const counts = `${steps.length} steps${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`;
+	const counts = `${steps.length} steps${unwritten ? ", 1 to write" : ""}${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`;
 
 	if (dryRun) {
 		console.log(`${body.join("\n")}\n\ndry run, nothing written: ${counts}`);

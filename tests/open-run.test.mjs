@@ -390,6 +390,17 @@ describe("open-run --check", () => {
       expect(run("--check", join(dir, "bug-fix/todo.md")).out).toContain("Run **Opening a PR**, or keep this line");
     }));
 
+  test("a playbook with no numbered steps opens one open step asking for the run's own", () =>
+    withDir((dir) => {
+      writeFileSync(join(dir, "rules-only.md"), "### Rules only\n\n- **One owner per PR.** Only the owner pushes.\n");
+      const opened = run(join(dir, "rules-only.md"), join(dir, "run"));
+      expect(opened.code).toBe(0);
+      expect(opened.out).toContain("todo.md: 0 steps, 1 to write");
+      const open = boxes(readFileSync(join(dir, "run/todo.md"), "utf8"));
+      expect(open).toEqual(["- [ ] rules-only has no numbered steps. Replace this line with the run's own steps."]);
+      expect(run("--check", join(dir, "run/todo.md")).code).toBe(1);
+    }));
+
   test("a placeholder skip reason does not count", () =>
     withDir((dir) => {
       const file = join(dir, "todo.md");
