@@ -14,6 +14,7 @@ import { childRollouts, scoreCodex } from "./score-codex.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+
 function resultText(block) {
   if (typeof block.content === "string") return block.content;
   return (block.content ?? []).filter((part) => part?.type === "text").map((part) => part.text).join("\n");
@@ -44,6 +45,7 @@ export function scoreStream(events) {
   const tasks = new Map();
   let background = null;
   const launched = new Set();
+  let launches = 0;
   let result = { ok: false, turns: null, ms: null, usd: null };
   const skills = [];
   const commands = [];
@@ -65,6 +67,7 @@ export function scoreStream(events) {
     }
     if (event.type === "system" && event.subtype === "task_started" && event.is_backgrounded && DELEGATE.test(String(event.task_type ?? ""))) {
       launched.add(event.task_id);
+      launches++;
     }
     if (event.type === "system" && event.subtype === "task_notification" && ENDED.has(event.status)) {
       if (!(event.status === "completed" && String(event.summary ?? "").endsWith(WAITING))) launched.delete(event.task_id);
@@ -142,7 +145,7 @@ export function scoreStream(events) {
     taskList: taskCounts(native),
     native: native.length ? native : null,
     delegatesInFlight: background ?? launched.size,
-    delegates: null,
+    delegates: launches,
     skills,
     commands,
     trails,

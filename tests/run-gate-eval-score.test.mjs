@@ -239,7 +239,9 @@ describe("scoreStream", () => {
     });
 
     test("fall back to launches with no final notice", () => {
-      expect(scoreStream([init, started("a1"), started("a2"), notice("a1", "completed"), done]).delegatesInFlight).toBe(1);
+      const two = scoreStream([init, started("a1"), started("a2"), notice("a1", "completed"), done]);
+      expect(two.delegatesInFlight).toBe(1);
+      expect(two.delegates).toBe(2);
       expect(scoreStream([init, started("a1"), notice("a1", "killed"), done]).delegatesInFlight).toBe(0);
       expect(scoreStream([init, started("s1", "local_bash"), done]).delegatesInFlight).toBe(0);
     });
