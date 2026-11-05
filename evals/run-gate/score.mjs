@@ -8,13 +8,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { OPENED, ownedList, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { DELEGATE, ENDED, openRunPlaybook, taskCounts, TODO_REDIRECT, WAITING } from "./score-common.mjs";
+import { scoreCodex } from "./score-codex.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-// A shell redirect into a *todo*.md file; `2>&1` and plain reads don't match.
-const TODO_REDIRECT = /(?:^|[^>2&])>{1,2}\s*["']?([^\s"'|;&<>]*todo[^\s"'|;&<>]*\.md)\b/gi;
-
 function resultText(block) {
   if (typeof block.content === "string") return block.content;
   return (block.content ?? []).filter((part) => part?.type === "text").map((part) => part.text).join("\n");
@@ -24,7 +23,9 @@ function resultText(block) {
  * Scores the parsed stream-json lines of one `claude -p` run.
  * Main-thread events (parent_tool_use_id null) decide when the list opened, the first edit, and
  * the native task list (TaskCreate and TaskUpdate, or the last TodoWrite); skills and shell commands
- * count from any thread, since a subagent can run a gate for the parent.
+ * count from any thread, since a subagent can run a gate for the parent. `delegatesInFlight` counts
+ * the background agents and workflows still running when the stream ended: the last
+ * `background_tasks_changed` list when the stream has one, else launches with no final notice.
  */
 export function scoreStream(events) {
   let index = 0;
@@ -39,9 +40,10 @@ export function scoreStream(events) {
   let playbook = null;
   let taskTools = false;
   let todos = null;
-  let created = 0;
-  const creates = new Set();
+  const creates = new Map();
   const tasks = new Map();
+  let background = null;
+  const launched = new Set();
   let result = { ok: false, turns: null, ms: null, usd: null };
   const skills = [];
   const commands = [];
@@ -49,13 +51,22 @@ export function scoreStream(events) {
 
   for (const event of events) {
     if (event.type === "system" && event.subtype === "init") {
-      session = event.session_id ?? session;
-      plugin = (event.plugins ?? []).find((p) => p.name === "pstack")?.path ?? null;
-      taskTools = (event.tools ?? []).some((tool) => tool === "TaskCreate" || tool === "TodoWrite");
+      session ??= event.session_id ?? null;
+      plugin ??= (event.plugins ?? []).find((p) => p.name === "pstack")?.path ?? null;
+      taskTools ||= (event.tools ?? []).some((tool) => tool === "TaskCreate" || tool === "TodoWrite");
     }
     if (event.type === "system" && event.subtype === "hook_response" && event.hook_event === "Stop") {
       const said = [event.output, event.stderr, event.stdout].map((text) => String(text ?? "")).join("\n");
       if (event.exit_code === 2 && said.includes("still has open steps")) gateBlocks++;
+    }
+    if (event.type === "system" && event.subtype === "background_tasks_changed" && Array.isArray(event.tasks)) {
+      background = event.tasks.filter((task) => DELEGATE.test(String(task?.task_type ?? ""))).length;
+    }
+    if (event.type === "system" && event.subtype === "task_started" && event.is_backgrounded && DELEGATE.test(String(event.task_type ?? ""))) {
+      launched.add(event.task_id);
+    }
+    if (event.type === "system" && event.subtype === "task_notification" && ENDED.has(event.status)) {
+      if (!(event.status === "completed" && String(event.summary ?? "").endsWith(WAITING))) launched.delete(event.task_id);
     }
     if (event.type === "result") {
       result = { ok: !event.is_error, turns: event.num_turns, ms: event.duration_ms, usd: event.total_cost_usd };
@@ -64,9 +75,10 @@ export function scoreStream(events) {
     for (const block of event.message?.content ?? []) {
       if (event.type === "user" && block.type === "tool_result" && main) {
         for (const match of resultText(block).matchAll(OPENED)) opened.push(match[1]);
-        if (creates.delete(block.tool_use_id)) {
-          created++;
-          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? String(created), "pending");
+        const pending = creates.get(block.tool_use_id);
+        if (pending) {
+          creates.delete(block.tool_use_id);
+          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? String(tasks.size + 1), pending);
         }
       }
       if (event.type !== "assistant" || block.type !== "tool_use") continue;
@@ -79,6 +91,7 @@ export function scoreStream(events) {
       const command = block.name === "Bash" ? String(input.command ?? "") : "";
       const file = String(input.file_path ?? "");
       if (/open-run\.mjs\b/.test(command) && /--check\b/.test(command)) checkRan = true;
+      playbook ??= openRunPlaybook(command);
       let kind = null;
       if (/open-run\.mjs\b/.test(command) && !/--(check|dry-run)\b/.test(command)) kind = "open-run";
       else if (block.name === "TaskCreate" || block.name === "TodoWrite") kind = "task-tool";
@@ -87,14 +100,21 @@ export function scoreStream(events) {
         todoHints.push(match[1]);
         kind ??= "todo.md";
       }
-      if (kind && !list) {
-        list = { kind, at: index };
-        if (kind === "open-run") playbook = command.match(/open-run\.mjs\s+(?:--slug\s+\S+\s+)?["']?([^\s"']+)/)?.[1] ?? null;
+      if (kind && !list) list = { kind, at: index };
+      // Deferred task tools are missing from init's list, so a run that used one was offered it.
+      if (block.name === "TaskCreate" || block.name === "TodoWrite") taskTools = true;
+      if (block.name === "TaskCreate") {
+        creates.set(block.id, { text: String(input.subject ?? ""), note: String(input.description ?? ""), done: false });
       }
-      if (block.name === "TaskCreate") creates.add(block.id);
-      if (block.name === "TaskUpdate" && input.taskId != null && input.status) {
-        if (input.status === "deleted") tasks.delete(String(input.taskId));
-        else if (tasks.has(String(input.taskId))) tasks.set(String(input.taskId), input.status);
+      if (block.name === "TaskUpdate" && input.taskId != null) {
+        const id = String(input.taskId);
+        const task = tasks.get(id);
+        if (input.status === "deleted") tasks.delete(id);
+        else if (task) {
+          if (input.status) task.done = input.status === "completed";
+          if (typeof input.subject === "string") task.text = input.subject;
+          if (typeof input.description === "string") task.note = input.description;
+        }
       }
       if (block.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
       if (block.name === "Write" && TODO_FILE.test(file)) written ??= file;
@@ -102,7 +122,10 @@ export function scoreStream(events) {
     }
   }
 
-  const statuses = [...tasks.values(), ...(todos ?? []).map((todo) => todo?.status)];
+  const native = [
+    ...tasks.values(),
+    ...(todos ?? []).map((todo) => ({ text: String(todo?.content ?? ""), note: "", done: todo?.status === "completed" })),
+  ];
   return {
     list: { kind: list?.kind ?? null, beforeFirstEdit: Boolean(list) && (firstEdit === null || list.at < firstEdit) },
     firstEditSeen: firstEdit !== null,
@@ -114,10 +137,14 @@ export function scoreStream(events) {
     gateBlocks,
     playbook: playbook && path.basename(playbook, ".md"),
     taskTools,
-    taskList: statuses.length ? { total: statuses.length, open: statuses.filter((status) => status !== "completed").length } : null,
+    taskList: taskCounts(native),
+    native: native.length ? native : null,
+    delegatesInFlight: background ?? launched.size,
+    delegates: null,
     skills,
     commands,
     plugin,
+    tokens: null,
     result,
   };
 }
@@ -196,14 +223,73 @@ function unittest(repo, extra) {
   }
 }
 
+const CHECKBOX = /^- \[[ xX]\] /;
+const normalize = (text) =>
+  String(text)
+    .replace(CHECKBOX, "")
+    .replace(/^\d+\.\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** The text of each checkbox line in a todolist. */
+export const checkboxes = (todo) => todo.split("\n").filter((line) => CHECKBOX.test(line));
+
+/**
+ * Verbatim fidelity: how many of the playbook's steps (open-run's `- [ ]` lines) appear as list
+ * items. An item matches a step when, past its checkbox and step number and with whitespace
+ * collapsed, it starts with the step's text, so a `skip:` reason appended to it still matches.
+ */
+export function fidelity(steps, items) {
+  if (!steps.length) return null;
+  const texts = items.map(normalize);
+  const matched = steps.filter((step) => texts.some((text) => text.startsWith(normalize(step)))).length;
+  return { steps: steps.length, matched };
+}
+
+/**
+ * A run's outcome: timeout when `timeout` killed it (exit 124), error on any other non-zero exit or
+ * a failed or missing result, delegate-in-flight when it ended with a background delegate still
+ * running, else clean.
+ */
+export function outcome(exit, s) {
+  if (exit === 124) return "timeout";
+  if (exit !== 0 || !s.result.ok) return "error";
+  if (s.delegatesInFlight > 0) return "delegate-in-flight";
+  return "clean";
+}
+
+const readLines = (file) =>
+  fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf8")
+        .split("\n")
+        .filter((line) => line.startsWith("{"))
+        .map((line) => JSON.parse(line))
+    : [];
+
+/** The `- [ ]` lines open-run prints for a bundled playbook, from the arm's own copy of the script. */
+function playbookSteps(plugin, playbook) {
+  if (!playbook || playbook.includes("/")) return [];
+  const script = path.join(plugin, "skills/poteto-mode/scripts/open-run.mjs");
+  if (!fs.existsSync(script)) return [];
+  const run = spawnSync(process.execPath, [script, "--dry-run", playbook], { encoding: "utf8" });
+  return run.status === 0 ? checkboxes(run.stdout) : [];
+}
+
+/** A native-arm run starts its trail beside no list: in its temp dir, where the scratchpad lives, or the repo's `.audit`. */
+function looseTrail(meta) {
+  const inTmp =
+    meta.tmp && fs.existsSync(meta.tmp)
+      ? fs.readdirSync(meta.tmp, { recursive: true }).map(String).filter((file) => path.basename(file) === "decisions.tsv").map((file) => path.join(meta.tmp, file))
+      : [];
+  return [path.join(meta.repo, ".audit/decisions.tsv"), ...inTmp].find((file) => fs.existsSync(file)) ?? null;
+}
+
 function scoreRun(runDir) {
   const meta = JSON.parse(fs.readFileSync(path.join(runDir, "meta.json"), "utf8"));
-  const events = fs
-    .readFileSync(path.join(runDir, "out.jsonl"), "utf8")
-    .split("\n")
-    .filter((line) => line.startsWith("{"))
-    .map((line) => JSON.parse(line));
-  const s = scoreStream(events);
+  const runtime = meta.runtime ?? "claude";
+  const events = readLines(path.join(runDir, "out.jsonl"));
+  const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl"))) : scoreStream(events);
 
   // The candidate's scratchpad is temporary, so the list and trail are copied out on first scoring.
   const kept = path.join(runDir, "todo.md");
@@ -219,22 +305,34 @@ function scoreRun(runDir) {
     const sibling = trailBeside(found);
     if (fs.existsSync(sibling)) fs.copyFileSync(sibling, trail);
   }
+  if (!fs.existsSync(trail)) {
+    const loose = looseTrail(meta);
+    if (loose) fs.copyFileSync(loose, trail);
+  }
   const todo = fs.existsSync(kept) ? fs.readFileSync(kept, "utf8") : "";
   let openSteps = null;
   if (todo) {
     const check = spawnSync(process.execPath, [openRun, "--check", kept], { encoding: "utf8" });
     openSteps = Number(check.stdout.match(/^(\d+) open$/m)?.[1] ?? NaN);
   }
+  // With no todo.md, the gates are read from the native list, as checkbox lines carrying each note.
+  const listText = todo || (s.native ?? []).map((item) => `- [${item.done ? "x" : " "}] ${item.text} ${item.note}`.trimEnd()).join("\n");
+  const items = todo ? checkboxes(todo) : (s.native ?? []).map((item) => item.text);
   const decisionRows = fs.existsSync(trail)
     ? fs.readFileSync(trail, "utf8").split("\n").filter((l) => l.trim()).length - 1
     : 0;
   const tree = workTree(meta.repo);
   const hidden = path.join(here, "tasks", meta.task, "hidden", "test_hidden.py");
 
-  const exit = path.join(runDir, "exit.json");
+  const exitFile = path.join(runDir, "exit.json");
+  const exit = fs.existsSync(exitFile) ? JSON.parse(fs.readFileSync(exitFile, "utf8")) : {};
   const score = {
     ...meta,
-    ...(fs.existsSync(exit) ? JSON.parse(fs.readFileSync(exit, "utf8")) : {}),
+    runtime,
+    ...exit,
+    outcome: outcome(exit.exit, s),
+    delegatesInFlight: s.delegatesInFlight,
+    delegates: s.delegates,
     pluginOk: s.plugin === meta.plugin,
     list: s.list.kind,
     listBeforeFirstEdit: s.list.beforeFirstEdit,
@@ -242,19 +340,22 @@ function scoreRun(runDir) {
     openSteps,
     checkRan: s.checkRan,
     gateBlocks: s.gateBlocks,
+    gateHeld: meta.arm === "todo-hook" ? s.gateBlocks > 0 : null,
     playbook: s.playbook,
+    fidelity: fidelity(playbookSteps(meta.plugin, s.playbook), items),
     taskTools: s.taskTools,
     taskList: s.taskList,
     decisionRows,
     tree: tree.path,
     commits: tree.commits,
     gates: {
-      deslop: gate(s.skills.some((k) => /deslop/.test(k)), todo, /deslop/i),
-      noComments: gate(s.skills.some((k) => /no-comments/.test(k)), todo, /no-comments/i),
-      pr: gate(s.commands.some((c) => /\bgh pr create\b/.test(c)), todo, /Opening a PR/),
+      deslop: gate(s.skills.some((k) => /deslop/.test(k)), listText, /deslop/i),
+      noComments: gate(s.skills.some((k) => /no-comments/.test(k)), listText, /no-comments/i),
+      pr: gate(s.commands.some((c) => /\bgh pr create\b/.test(c)), listText, /Opening a PR/),
     },
     visibleTests: unittest(tree.path, null),
     hiddenTests: unittest(tree.path, hidden),
+    tokens: s.tokens,
     ...s.result,
   };
   fs.writeFileSync(path.join(runDir, "score.json"), JSON.stringify(score, null, 2) + "\n");

@@ -1,19 +1,22 @@
 #!/usr/bin/env node
-// Aggregates every runs/*/score.json in a batch into one Markdown table per arm.
+// Aggregates every runs/*/score.json in a batch into one Markdown table, a column per runtime and arm.
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const batch = process.argv[2];
-const runs = path.join(batch, "runs");
-const scores = fs
-  .readdirSync(runs)
-  .map((dir) => path.join(runs, dir, "score.json"))
-  .filter((file) => fs.existsSync(file))
-  .map((file) => JSON.parse(fs.readFileSync(file, "utf8")));
+const RUNTIMES = ["claude", "codex"];
+const ARMS = ["native", "todo", "todo-hook"];
+const OUTCOMES = ["clean", "delegate-in-flight", "timeout", "error"];
 
-const arms = ["upstream", "prose", "hook"].filter((arm) => scores.some((s) => s.arm === arm));
-const tasks = [...new Set(scores.map((s) => s.task))].sort();
+export function loadScores(batch) {
+  const runs = path.join(batch, "runs");
+  return fs
+    .readdirSync(runs)
+    .map((dir) => path.join(runs, dir, "score.json"))
+    .filter((file) => fs.existsSync(file))
+    .map((file) => JSON.parse(fs.readFileSync(file, "utf8")));
+}
+
 const rate = (rows, pick) => `${rows.filter(pick).length}/${rows.length}`;
 const mean = (rows, pick) => {
   const values = rows.map(pick).filter((v) => typeof v === "number" && !Number.isNaN(v));
@@ -25,22 +28,29 @@ const counts = (rows, pick) => {
 };
 const kept = (s) => s.taskList?.total > 0;
 const resolved = (s) => (s.todoKept || kept(s)) && (!s.todoKept || s.openSteps === 0) && (!kept(s) || s.taskList.open === 0);
-const minutes = (s) => (s.ms ?? s.seconds * 1000) / 60000;
+/** Wall-clock minutes. `duration_ms` covers only the main thread's last stretch in a run that delegates. */
+export const minutes = (s) => (typeof s.seconds === "number" ? s.seconds / 60 : NaN);
 const gates = (rows, key) =>
   ["done", "skipped", "claimed", "missing"].map((g) => `${rows.filter((r) => r.gates[key] === g).length}`).join(" / ");
+const share = (s) => (s.fidelity ? (100 * s.fidelity.matched) / s.fidelity.steps : NaN);
 
 const metrics = [
-  ["runs finished without error", (r) => rate(r, (s) => s.ok)],
+  ["runs finished clean", (r) => rate(r, (s) => s.outcome === "clean")],
+  [`outcome ${OUTCOMES.join(" / ")}`, (r) => OUTCOMES.map((o) => r.filter((s) => s.outcome === o).length).join(" / ")],
+  ["runs ended with a delegate in flight", (r) => rate(r, (s) => s.delegatesInFlight > 0)],
+  ["delegates launched (mean)", (r) => mean(r, (s) => s.delegates)],
   ["plugin arm loaded", (r) => rate(r, (s) => s.pluginOk)],
   ["list opened before first edit", (r) => rate(r, (s) => s.listBeforeFirstEdit)],
   ["list kind open-run / task-tool / todo.md", (r) => ["open-run", "task-tool", "todo.md"].map((k) => r.filter((s) => s.list === k).length).join(" / ")],
+  ["playbook steps kept verbatim (mean %)", (r) => mean(r, share)],
   ["todo.md kept", (r) => rate(r, (s) => s.todoKept)],
   ["todo.md fully resolved at the end", (r) => rate(r, (s) => s.openSteps === 0)],
   ["task tools offered", (r) => rate(r, (s) => s.taskTools)],
   ["task-tool list kept", (r) => rate(r, kept)],
   ["task-tool list fully resolved at the end", (r) => rate(r, (s) => kept(s) && s.taskList.open === 0)],
+  ["task-tool steps skipped with a reason (mean)", (r) => mean(r.filter(kept), (s) => s.taskList.skipped)],
   ["every list kept fully resolved", (r) => rate(r, resolved)],
-  ["playbook opened by open-run", (r) => counts(r, (s) => s.playbook)],
+  ["playbook routed", (r) => counts(r, (s) => s.playbook)],
   ["ran --check", (r) => rate(r, (s) => s.checkRan)],
   ["runs with a stop held by run-gate", (r) => rate(r, (s) => s.gateBlocks > 0)],
   ["stops held by run-gate (mean)", (r) => mean(r, (s) => s.gateBlocks)],
@@ -54,29 +64,40 @@ const metrics = [
   ["turns (mean)", (r) => mean(r, (s) => s.turns)],
   ["minutes (mean)", (r) => mean(r, minutes)],
   ["USD (mean)", (r) => mean(r, (s) => s.usd)],
+  ["output tokens (mean)", (r) => mean(r, (s) => s.tokens?.output_tokens)],
 ];
 
-const byArm = Object.fromEntries(arms.map((arm) => [arm, scores.filter((s) => s.arm === arm)]));
-const lines = [
-  `# run-gate eval: ${path.basename(batch)}`,
-  "",
-  `${scores.length} scored runs. Total USD ${scores.reduce((a, s) => a + (s.usd ?? 0), 0).toFixed(2)}.`,
-  "",
-  `| Metric | ${arms.join(" | ")} |`,
-  `| --- | ${arms.map(() => "---").join(" | ")} |`,
-  ...metrics.map(([name, fn]) => `| ${name} | ${arms.map((arm) => fn(byArm[arm])).join(" | ")} |`),
-  ...[
-    ["Held-out tests by task", (r) => rate(r, (s) => s.hiddenTests)],
-    ["Minutes (mean) by task", (r) => mean(r, minutes)],
-    ["Runs with a stop held by run-gate, by task", (r) => rate(r, (s) => s.gateBlocks > 0)],
-    ["Every list kept fully resolved, by task", (r) => rate(r, resolved)],
-  ].flatMap(([title, fn]) => [
+export function report(batch, scores = loadScores(batch)) {
+  const runtime = (s) => s.runtime ?? "claude";
+  const columns = RUNTIMES.flatMap((rt) => ARMS.map((arm) => ({ rt, arm, name: `${rt} ${arm}` }))).filter((c) =>
+    scores.some((s) => runtime(s) === c.rt && s.arm === c.arm),
+  );
+  const tasks = [...new Set(scores.map((s) => s.task))].sort();
+  const rows = Object.fromEntries(columns.map((c) => [c.name, scores.filter((s) => runtime(s) === c.rt && s.arm === c.arm)]));
+  const table = (header, lines) => [
+    `| ${header} | ${columns.map((c) => c.name).join(" | ")} |`,
+    `| --- | ${columns.map(() => "---").join(" | ")} |`,
+    ...lines,
+  ];
+  return [
+    `# run-gate eval: ${path.basename(batch)}`,
     "",
-    `## ${title}`,
+    `${scores.length} scored runs. Claude USD ${scores.reduce((a, s) => a + (s.usd ?? 0), 0).toFixed(2)}.`,
     "",
-    `| Task | ${arms.join(" | ")} |`,
-    `| --- | ${arms.map(() => "---").join(" | ")} |`,
-    ...tasks.map((task) => `| ${task} | ${arms.map((arm) => fn(byArm[arm].filter((s) => s.task === task))).join(" | ")} |`),
-  ]),
-];
-console.log(lines.join("\n"));
+    ...table("Metric", metrics.map(([name, fn]) => `| ${name} | ${columns.map((c) => fn(rows[c.name])).join(" | ")} |`)),
+    ...[
+      ["Held-out tests by task", (r) => rate(r, (s) => s.hiddenTests)],
+      ["Minutes (mean) by task", (r) => mean(r, minutes)],
+      ["Runs finished clean, by task", (r) => rate(r, (s) => s.outcome === "clean")],
+      ["Runs with a stop held by run-gate, by task", (r) => rate(r, (s) => s.gateBlocks > 0)],
+      ["Every list kept fully resolved, by task", (r) => rate(r, resolved)],
+    ].flatMap(([title, fn]) => [
+      "",
+      `## ${title}`,
+      "",
+      ...table("Task", tasks.map((task) => `| ${task} | ${columns.map((c) => fn(rows[c.name].filter((s) => s.task === task))).join(" | ")} |`)),
+    ]),
+  ].join("\n");
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) console.log(report(process.argv[2]));

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gate, runList, scoreStream, workTree } from "../evals/run-gate/score.mjs";
+import { fidelity, gate, outcome, runList, scoreStream, workTree } from "../evals/run-gate/score.mjs";
 
 const repo = "/work/slugkit-x1";
 let id = 0;
@@ -169,13 +169,13 @@ describe("scoreStream", () => {
     ]);
     expect(s.taskTools).toBe(true);
     expect(s.list.kind).toBe("task-tool");
-    expect(s.taskList).toEqual({ total: 2, open: 1 });
+    expect(s.taskList).toEqual({ total: 2, open: 1, skipped: 0 });
   });
 
   test("the last TodoWrite is the task list, and an empty one is no list", () => {
     const todo = (...statuses) => use("TodoWrite", { todos: statuses.map((status, i) => ({ content: `${i}`, status })) });
-    expect(scoreStream([init, todo("pending", "pending"), todo("completed", "in_progress"), done]).taskList).toEqual({ total: 2, open: 1 });
-    expect(scoreStream([init, todo("pending"), todo("completed"), done]).taskList).toEqual({ total: 1, open: 0 });
+    expect(scoreStream([init, todo("pending", "pending"), todo("completed", "in_progress"), done]).taskList).toEqual({ total: 2, open: 1, skipped: 0 });
+    expect(scoreStream([init, todo("pending"), todo("completed"), done]).taskList).toEqual({ total: 1, open: 0, skipped: 0 });
     expect(scoreStream([init, todo(), done]).taskList).toBe(null);
   });
 
@@ -201,8 +201,86 @@ describe("scoreStream", () => {
     expect(scoreStream([init, use("Write", { file_path: "/scratch/todo.md" }), done]).playbook).toBe(null);
   });
 
+  test("a native task keeps its subject and description, and a completed task with a skip reason counts as skipped", () => {
+    const s = scoreStream([
+      init,
+      use("TaskCreate", { subject: "1. Reproduce", description: "" }),
+      result("Task #1 created successfully: 1. Reproduce"),
+      use("TaskCreate", { subject: "Run `/deslop` over the diff before commit.", description: "" }),
+      result("Task #2 created successfully: deslop"),
+      use("TaskUpdate", { taskId: "1", status: "completed", subject: "1. Reproduce the bug" }),
+      use("TaskUpdate", { taskId: "2", status: "completed", description: "skip: the diff is one line" }),
+      done,
+    ]);
+    expect(s.taskList).toEqual({ total: 2, open: 0, skipped: 1 });
+    expect(s.native).toEqual([
+      { text: "1. Reproduce the bug", note: "", done: true },
+      { text: "Run `/deslop` over the diff before commit.", note: "skip: the diff is one line", done: true },
+    ]);
+    expect(s.taskTools).toBe(true);
+  });
+
+  test("the native arm's dry run names the playbook but opens no list", () => {
+    const s = scoreStream([init, use("Bash", { command: "node /arms/p3/pstack/skills/poteto-mode/scripts/open-run.mjs --dry-run bug-fix" }), done]);
+    expect(s.playbook).toBe("bug-fix");
+    expect(s.list.kind).toBe(null);
+  });
+
+  describe("delegates in flight at the end of the stream", () => {
+    const changed = (...types) => ({ type: "system", subtype: "background_tasks_changed", tasks: types.map((t, i) => ({ task_id: `b${i}`, task_type: t })) });
+    const started = (id, type = "local_agent") => ({ type: "system", subtype: "task_started", task_id: id, task_type: type, is_backgrounded: true });
+    const notice = (id, status, summary = "done") => ({ type: "system", subtype: "task_notification", task_id: id, status, summary });
+
+    test("come from the last background_tasks_changed list, agents and workflows only", () => {
+      expect(scoreStream([init, changed("local_agent"), changed("local_agent", "local_bash"), done]).delegatesInFlight).toBe(1);
+      expect(scoreStream([init, changed("local_agent"), changed(), done]).delegatesInFlight).toBe(0);
+      expect(scoreStream([init, changed("local_bash", "monitor"), done]).delegatesInFlight).toBe(0);
+    });
+
+    test("fall back to launches with no final notice", () => {
+      expect(scoreStream([init, started("a1"), started("a2"), notice("a1", "completed"), done]).delegatesInFlight).toBe(1);
+      expect(scoreStream([init, started("a1"), notice("a1", "killed"), done]).delegatesInFlight).toBe(0);
+      expect(scoreStream([init, started("s1", "local_bash"), done]).delegatesInFlight).toBe(0);
+    });
+
+    test("count an agent still waiting on its own background work as in flight, as fork PR #2's run-gate does", () => {
+      const waiting = notice("a1", "completed", "Agent \"build\" is waiting on its own background work");
+      expect(scoreStream([init, started("a1"), waiting, done]).delegatesInFlight).toBe(1);
+      expect(scoreStream([init, started("a1"), waiting, notice("a1", "completed"), done]).delegatesInFlight).toBe(0);
+    });
+  });
+
   test("a run with no result line reports not ok", () => {
     expect(scoreStream([init]).result).toEqual({ ok: false, turns: null, ms: null, usd: null });
+  });
+});
+
+describe("fidelity", () => {
+  const steps = ["- [ ] 1. Reproduce the bug with a failing test.", "- [ ] 2. Fix the root cause.", "- [ ] Run `/deslop` over the diff before commit."];
+
+  test("counts each step some item starts with, past checkbox, number and spacing", () => {
+    const items = ["- [x] 1.  Reproduce the bug with a failing test.", "Fix the root cause. skip: not reproducible", "Run deslop"];
+    expect(fidelity(steps, items)).toEqual({ steps: 3, matched: 2 });
+  });
+
+  test("a shortened or reworded item does not match, and no steps means no score", () => {
+    expect(fidelity(steps, ["Reproduce", "Fix root cause"])).toEqual({ steps: 3, matched: 0 });
+    expect(fidelity([], ["anything"])).toBe(null);
+  });
+});
+
+describe("outcome", () => {
+  const ok = { result: { ok: true }, delegatesInFlight: 0 };
+  test("a timeout and a non-zero exit are not clean, even with a successful result line", () => {
+    expect(outcome(124, ok)).toBe("timeout");
+    expect(outcome(1, ok)).toBe("error");
+    expect(outcome(undefined, ok)).toBe("error");
+  });
+  test("a failed result is an error, a live delegate is its own outcome, and the rest are clean", () => {
+    expect(outcome(0, { ...ok, result: { ok: false } })).toBe("error");
+    expect(outcome(0, { ...ok, delegatesInFlight: 2 })).toBe("delegate-in-flight");
+    expect(outcome(0, { ...ok, delegatesInFlight: null })).toBe("clean");
+    expect(outcome(0, ok)).toBe("clean");
   });
 });
 
