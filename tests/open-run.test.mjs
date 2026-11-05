@@ -20,6 +20,7 @@ function withDir(fn) {
 
 const bare = { ...process.env };
 delete bare.CLAUDE_CODE_SESSION_ID;
+delete bare.CODEX_THREAD_ID;
 
 function runAs(session, ...args) {
   const env = session === undefined ? bare : { ...bare, CLAUDE_CODE_SESSION_ID: session };
@@ -283,6 +284,20 @@ describe("open-run session marker", () => {
         expect(listSession(todo)).toBe(null);
         expect(todo).not.toContain("Session:");
       }
+    }));
+
+  test("marks the list with CODEX_THREAD_ID on Codex, and prefers CLAUDE_CODE_SESSION_ID when both are set", () =>
+    withDir((dir) => {
+      const thread = "01a1ae09-c8f1-78f3-ba8c-6c7e8651b1e1";
+      const codex = spawnSync("node", [script, "bug-fix", join(dir, "codex")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: thread } });
+      expect(codex.status).toBe(0);
+      expect(listSession(readFileSync(join(dir, "codex/todo.md"), "utf8"))).toBe(thread);
+      const both = spawnSync("node", [script, "bug-fix", join(dir, "both")], {
+        encoding: "utf8",
+        env: { ...bare, CODEX_THREAD_ID: thread, CLAUDE_CODE_SESSION_ID: SESSION },
+      });
+      expect(both.status).toBe(0);
+      expect(listSession(readFileSync(join(dir, "both/todo.md"), "utf8"))).toBe(SESSION);
     }));
 
   test("reruns in the session that opened the list, and with no id on either side, leave it as is", () =>

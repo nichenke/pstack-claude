@@ -36,7 +36,7 @@ export function trailBeside(todo) {
 	return runFiles(path.dirname(todo), slug).trail;
 }
 
-/** The header line open-run writes into a list it creates, naming the Claude Code session that owns it. */
+/** The header line open-run writes into a list it creates, naming the Claude Code session or Codex thread that owns it. */
 export const sessionHeader = (id) => `Session: ${id}`;
 
 const SESSION_LINE = new RegExp(`^Session: (${SLUG_CHARS})$`);

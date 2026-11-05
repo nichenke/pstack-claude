@@ -83,7 +83,7 @@ function open(playbook, dir, slug, dryRun) {
 	const steps = figure ? phaseSteps(lines) : numberedSteps(lines);
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
-	const session = SLUG.test(process.env.CLAUDE_CODE_SESSION_ID ?? "") ? process.env.CLAUDE_CODE_SESSION_ID : null;
+	const session = [process.env.CLAUDE_CODE_SESSION_ID, process.env.CODEX_THREAD_ID].find((id) => SLUG.test(id ?? "")) ?? null;
 	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
 	if (session) body.push(sessionHeader(session), "");
 	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
