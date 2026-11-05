@@ -321,3 +321,51 @@ describe("run-gate lets a stop through while background work runs", () => {
       expect(gate(dir, [record("agent-launch", A), record("notification-user", A)], { stop_hook_active: true })).toBe(0)));
 });
 
+
+describe("run-gate Stop hook on a Codex rollout", () => {
+  const THREAD = "01a1ae09-c8f1-78f3-ba8c-6c7e8651b1e1";
+  const meta = JSON.stringify({ type: "session_meta", payload: { id: THREAD, originator: "codex_exec" } });
+  const exec = (output, thread = THREAD) =>
+    JSON.stringify({
+      type: "event_msg",
+      payload: {
+        type: "item_completed",
+        thread_id: thread,
+        item: { type: "CommandExecution", command: ["/bin/zsh", "-lc", "node open-run.mjs bug-fix ."], aggregated_output: output, exit_code: 0 },
+      },
+    });
+  const opened = (file) => `${file}: 6 steps, 3 PR gates\n${file.replace("todo.md", "decisions.tsv")}: started\n`;
+  const runCodex = (dir, lines, input = {}) => runHook(dir, [meta, ...lines], { session_id: THREAD, turn_id: "t1", ...input });
+
+  test("holds the stop while the thread's own list has an open step", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", "- [ ] 1. Reproduce\n", THREAD);
+      const r = runCodex(dir, [exec(opened(file))]);
+      expect(r.status).toBe(2);
+      expect(r.err).toContain("still has open steps");
+      expect(r.err).toContain("1. Reproduce");
+    }));
+
+  test("lets the stop through once every line is resolved, and on the second stop", () =>
+    withDir((dir) => {
+      const done = todo(dir, "todo.md", "- [x] 1. Reproduce\n- [ ] 2. Fix skip: not reproducible\n", THREAD);
+      expect(runCodex(dir, [exec(opened(done))]).status).toBe(0);
+      const open = todo(dir, "b.todo.md", "- [ ] 1. Reproduce\n", THREAD);
+      expect(runCodex(dir, [exec(opened(open))], { stop_hook_active: true }).status).toBe(0);
+    }));
+
+  test("passes over a list another thread stamped, and a command another thread ran", () =>
+    withDir((dir) => {
+      const theirs = todo(dir, "todo.md", "- [ ] 1. Reproduce\n", "someone-else");
+      expect(runCodex(dir, [exec(opened(theirs))]).status).toBe(0);
+      const mine = todo(dir, "m.todo.md", "- [ ] 1. Reproduce\n", THREAD);
+      expect(runCodex(dir, [exec(opened(mine), "another-thread")]).status).toBe(0);
+    }));
+
+  test("holds while a delegate runs, since Codex reports no background work to the hook", () =>
+    withDir((dir) => {
+      const file = todo(dir, "todo.md", "- [ ] 1. Reproduce\n", THREAD);
+      const spawn = JSON.stringify({ type: "response_item", payload: { type: "custom_tool_call", name: "exec", input: "await tools.spawn_agent({task: 'x'})" } });
+      expect(runCodex(dir, [exec(opened(file)), spawn]).status).toBe(2);
+    }));
+});

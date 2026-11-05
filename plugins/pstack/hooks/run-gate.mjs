@@ -4,6 +4,9 @@
 // BLOCKED:. A second stop goes through, and so does a stop while a background agent or workflow
 // runs, since its completion wakes the session again. Background detection only ever lets a stop
 // through: with no `background_tasks` input and no launch record it recognises, the gate holds.
+// On Codex the transcript is the thread's rollout, and the lists come from its CommandExecution
+// items. Codex 0.165 gives the hook no background-work signal, so there the gate holds while a
+// delegate runs.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -52,10 +55,10 @@ function ended(entry) {
 	return ids;
 }
 
-function readTranscript(file) {
+function readTranscript(lines) {
 	const opened = [];
 	const running = new Set();
-	for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+	for (const line of lines) {
 		if (!RELEVANT.test(line)) continue;
 		let entry;
 		try {
@@ -72,10 +75,37 @@ function readTranscript(file) {
 	return { opened, running: running.size };
 }
 
+function readRollout(lines, thread) {
+	const opened = [];
+	for (const line of lines) {
+		if (!line.includes('"CommandExecution"')) continue;
+		let entry;
+		try {
+			entry = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		const item = entry?.payload?.item;
+		if (entry.type !== "event_msg" || entry.payload.type !== "item_completed" || item?.type !== "CommandExecution") continue;
+		if (entry.payload.thread_id !== thread || typeof item.aggregated_output !== "string") continue;
+		for (const match of item.aggregated_output.matchAll(OPENED)) opened.push(match[1]);
+	}
+	return { opened, running: 0 };
+}
+
+function isRollout(lines) {
+	try {
+		return JSON.parse(lines[0]).type === "session_meta";
+	} catch {
+		return false;
+	}
+}
+
 const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
 if (input.stop_hook_active || !input.transcript_path || !fs.existsSync(input.transcript_path)) process.exit(0);
 
-const transcript = readTranscript(input.transcript_path);
+const lines = fs.readFileSync(input.transcript_path, "utf8").split("\n");
+const transcript = isRollout(lines) ? readRollout(lines, input.session_id) : readTranscript(lines);
 const todo = ownedList(transcript.opened, input.session_id);
 if (!todo) process.exit(0);
 
