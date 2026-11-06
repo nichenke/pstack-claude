@@ -43,6 +43,8 @@ jq -n --arg task "$task" --arg runtime "$runtime" --arg arm "$arm" --argjson rep
   >"$run_dir/meta.json"
 
 prompt_text=$(cat "$here/tasks/$task/prompt.txt")
+codex_parent=(-u CODEX_THREAD_ID -u CODEX_SESSION_ID)
+claude_parent=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_PLUGIN_ROOT)
 started=$(date +%s)
 set +e
 if [[ $runtime == claude ]]; then
@@ -51,7 +53,7 @@ if [[ $runtime == claude ]]; then
   (
     cd "$repo"
     # The settings flag keeps an installed copy of pstack from loading beside the arm.
-    env -u CODEX_THREAD_ID -u CODEX_SESSION_ID -u CLAUDE_CODE_ENABLE_TODO_TOOLS TMPDIR="$run_tmp" ${native[@]+"${native[@]}"} \
+    env "${codex_parent[@]}" -u CLAUDE_CODE_ENABLE_TODO_TOOLS TMPDIR="$run_tmp" ${native[@]+"${native[@]}"} \
       timeout "$((minutes * 60))" "${CLAUDE_BIN:-claude}" -p "/pstack:poteto-mode $prompt_text" \
       --plugin-dir "$plugin" \
       --settings '{"enabledPlugins":{"pstack@pstack-claude":false}}' \
@@ -69,7 +71,7 @@ else
   if [[ -n $model ]]; then flags+=(-m "$model"); fi
   # workspace-write keeps .git read-only, so without --add-dir a candidate cannot commit in its repo.
   if [[ ${CODEX_HOOKS:-} == bypass ]]; then flags+=(--dangerously-bypass-hook-trust); fi
-  env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_PLUGIN_ROOT \
+  env "${claude_parent[@]}" \
     CODEX_HOME="$codex_home" TMPDIR="$run_tmp" \
     timeout "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write --add-dir "$repo/.git" \
     -c approval_policy='"never"' ${flags[@]+"${flags[@]}"} "\$pstack:poteto-mode $prompt_text" \

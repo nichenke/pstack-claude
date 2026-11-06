@@ -27,7 +27,7 @@ codex_home() {
     policy: {installation: "AVAILABLE", authentication: "ON_INSTALL", products: ["CODEX"]}}]}' \
     >"$root/.agents/plugins/marketplace.json"
   [[ -f $auth_home/auth.json ]] || { echo "build-arms: no $auth_home/auth.json; log in to Codex first" >&2; exit 1; }
-  # Linked, not copied: a copy that refreshes its token would invalidate the original's.
+  # Linked, not copied, so no copy of the operator's credentials sits under WORK_ROOT.
   ln -s "$auth_home/auth.json" "$home/auth.json"
   if [[ -f $auth_home/AGENTS.md ]]; then ln -s "$auth_home/AGENTS.md" "$home/AGENTS.md"; fi
   CODEX_HOME=$home "$codex_bin" plugin marketplace add "$root" >/dev/null

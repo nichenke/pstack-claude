@@ -277,7 +277,8 @@ const readLines = (file) =>
     : [];
 
 function playbookSteps(plugin, playbook) {
-  if (!playbook || playbook.includes("/")) return [];
+  const isBundled = playbook && !playbook.includes("/");
+  if (!isBundled) return [];
   const script = path.join(plugin, "skills/poteto-mode/scripts/open-run.mjs");
   if (!fs.existsSync(script)) return [];
   const run = spawnSync(process.execPath, [script, "--dry-run", playbook], { encoding: "utf8" });
@@ -300,7 +301,7 @@ export function trailFrom(s, repo) {
   );
 }
 
-function codexChildren(runDir, meta, events) {
+function copyCodexChildren(runDir, meta, events) {
   const dir = path.join(runDir, "children");
   const thread = events.find((e) => e.type === "thread.started")?.thread_id;
   if (!fs.existsSync(dir) && thread && meta.codexHome) {
@@ -314,7 +315,7 @@ function scoreRun(runDir) {
   const meta = JSON.parse(fs.readFileSync(path.join(runDir, "meta.json"), "utf8"));
   const runtime = meta.runtime ?? "claude";
   const events = readLines(path.join(runDir, "out.jsonl"));
-  const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl")), codexChildren(runDir, meta, events)) : scoreStream(events);
+  const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl")), copyCodexChildren(runDir, meta, events)) : scoreStream(events);
 
   // The candidate's scratchpad is temporary, so the list and trail are copied out on first scoring.
   const kept = path.join(runDir, "todo.md");
