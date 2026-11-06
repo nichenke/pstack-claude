@@ -47,6 +47,8 @@ Three batches run with `evals/run-gate/run.sh` on 2026-10-16, fork arms at `5c8b
 4. **report.mjs counts a timeout as finished without error (eval).** prose-1 exited 124 at the 90-minute cap and was reported as 5/5 clean.
 5. **Background delegates end headless runs early (eval).** Either keep the candidate session open until its background agents finish, or record "stopped with a delegate in flight" as its own outcome, so that open steps measure discipline rather than harness mode.
 
+Status, 2026-11-05: 1 shipped in 0.9.90. 2 to 5 are fixed for harness-config#527: each run gets its own `TMPDIR`, minutes come from `seconds`, any non-zero exit is a `timeout` or `error` outcome, and a run that ends with a delegate running is `delegate-in-flight`. `claude -p` 2.1.318 waits for a background agent, so 5 now applies mainly to Codex, whose `codex exec` does not. See `evals/run-gate/README.md` § Delegates.
+
 ## Recommendation
 
 - Keep `open-run.mjs`, **Start the run** and `--check`. Two batches against two upstream versions agree, and native task tools are no substitute.

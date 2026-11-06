@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Scores one run directory written by run-one.sh: reads its stream-json output,
-// the todolist the run kept, and the final repo, and writes score.json beside them.
+// Scores one run directory written by run-one.sh: reads its runtime's event stream (and a Codex
+// run's rollouts), the todolist the run kept, and the final repo, and writes score.json beside them.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,12 +8,14 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { OPENED, ownedList, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { DELEGATE, ENDED, openRunPlaybook, taskCounts, TODO_REDIRECT, WAITING } from "./score-common.mjs";
+import { childRollouts, scoreCodex } from "./score-codex.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-// A shell redirect into a *todo*.md file; `2>&1` and plain reads don't match.
-const TODO_REDIRECT = /(?:^|[^>2&])>{1,2}\s*["']?([^\s"'|;&<>]*todo[^\s"'|;&<>]*\.md)\b/gi;
+/** Bumped whenever a score.json field changes meaning, so a report can refuse to mix scorers. */
+export const SCORER = 3;
 
 function resultText(block) {
   if (typeof block.content === "string") return block.content;
@@ -23,8 +25,10 @@ function resultText(block) {
 /**
  * Scores the parsed stream-json lines of one `claude -p` run.
  * Main-thread events (parent_tool_use_id null) decide when the list opened, the first edit, and
- * the native task list (TaskCreate and TaskUpdate, or the last TodoWrite); skills and shell commands
- * count from any thread, since a subagent can run a gate for the parent.
+ * the native task list (TaskCreate tasks under TaskUpdate, merged with the last TodoWrite); skills and shell commands
+ * count from any thread, since a subagent can run a gate for the parent. `delegatesInFlight` counts
+ * the background agents and workflows still running when the stream ended: the last
+ * `background_tasks_changed` list when the stream has one, else launches with no final notice.
  */
 export function scoreStream(events) {
   let index = 0;
@@ -39,34 +43,55 @@ export function scoreStream(events) {
   let playbook = null;
   let taskTools = false;
   let todos = null;
-  let created = 0;
-  const creates = new Set();
+  const creates = new Map();
   const tasks = new Map();
+  let background = null;
+  const launched = new Set();
+  let launches = 0;
+  let stops = 0;
+  let created = 0;
   let result = { ok: false, turns: null, ms: null, usd: null };
+  let tokens = null;
   const skills = [];
   const commands = [];
   const todoHints = [];
+  const trails = [];
 
   for (const event of events) {
     if (event.type === "system" && event.subtype === "init") {
-      session = event.session_id ?? session;
-      plugin = (event.plugins ?? []).find((p) => p.name === "pstack")?.path ?? null;
-      taskTools = (event.tools ?? []).some((tool) => tool === "TaskCreate" || tool === "TodoWrite");
+      session ??= event.session_id ?? null;
+      plugin ??= (event.plugins ?? []).find((p) => p.name === "pstack")?.path ?? null;
+      taskTools ||= (event.tools ?? []).some((tool) => tool === "TaskCreate" || tool === "TodoWrite");
     }
     if (event.type === "system" && event.subtype === "hook_response" && event.hook_event === "Stop") {
       const said = [event.output, event.stderr, event.stdout].map((text) => String(text ?? "")).join("\n");
+      // Every Stop hook reports as hook_name "Stop" with a random id, so only run-gate's block, by its message, is attributable.
+      stops++;
       if (event.exit_code === 2 && said.includes("still has open steps")) gateBlocks++;
+    }
+    if (event.type === "system" && event.subtype === "background_tasks_changed" && Array.isArray(event.tasks)) {
+      background = event.tasks.filter((task) => DELEGATE.test(String(task?.task_type ?? ""))).length;
+    }
+    if (event.type === "system" && event.subtype === "task_started" && event.is_backgrounded && DELEGATE.test(String(event.task_type ?? ""))) {
+      launched.add(event.task_id);
+      launches++;
+    }
+    if (event.type === "system" && event.subtype === "task_notification" && ENDED.has(event.status)) {
+      if (!(event.status === "completed" && String(event.summary ?? "").endsWith(WAITING))) launched.delete(event.task_id);
     }
     if (event.type === "result") {
       result = { ok: !event.is_error, turns: event.num_turns, ms: event.duration_ms, usd: event.total_cost_usd };
+      tokens = event.usage ?? tokens;
     }
     const main = event.parent_tool_use_id == null;
     for (const block of event.message?.content ?? []) {
       if (event.type === "user" && block.type === "tool_result" && main) {
         for (const match of resultText(block).matchAll(OPENED)) opened.push(match[1]);
-        if (creates.delete(block.tool_use_id)) {
+        const pending = creates.get(block.tool_use_id);
+        if (pending) {
+          creates.delete(block.tool_use_id);
           created++;
-          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? String(created), "pending");
+          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? `unnumbered-${created}`, pending);
         }
       }
       if (event.type !== "assistant" || block.type !== "tool_use") continue;
@@ -79,6 +104,7 @@ export function scoreStream(events) {
       const command = block.name === "Bash" ? String(input.command ?? "") : "";
       const file = String(input.file_path ?? "");
       if (/open-run\.mjs\b/.test(command) && /--check\b/.test(command)) checkRan = true;
+      playbook ??= openRunPlaybook(command);
       let kind = null;
       if (/open-run\.mjs\b/.test(command) && !/--(check|dry-run)\b/.test(command)) kind = "open-run";
       else if (block.name === "TaskCreate" || block.name === "TodoWrite") kind = "task-tool";
@@ -87,22 +113,33 @@ export function scoreStream(events) {
         todoHints.push(match[1]);
         kind ??= "todo.md";
       }
-      if (kind && !list) {
-        list = { kind, at: index };
-        if (kind === "open-run") playbook = command.match(/open-run\.mjs\s+(?:--slug\s+\S+\s+)?["']?([^\s"']+)/)?.[1] ?? null;
+      if (kind && !list) list = { kind, at: index };
+      // Deferred task tools are missing from init's list, so a run that used one was offered it.
+      if (block.name === "TaskCreate" || block.name === "TodoWrite") taskTools = true;
+      if (block.name === "TaskCreate") {
+        creates.set(block.id, { text: String(input.subject ?? ""), note: String(input.description ?? ""), done: false });
       }
-      if (block.name === "TaskCreate") creates.add(block.id);
-      if (block.name === "TaskUpdate" && input.taskId != null && input.status) {
-        if (input.status === "deleted") tasks.delete(String(input.taskId));
-        else if (tasks.has(String(input.taskId))) tasks.set(String(input.taskId), input.status);
+      if (block.name === "TaskUpdate" && input.taskId != null) {
+        const id = String(input.taskId);
+        const task = tasks.get(id);
+        if (input.status === "deleted") tasks.delete(id);
+        else if (task) {
+          if (input.status) task.done = input.status === "completed";
+          if (typeof input.subject === "string") task.text = input.subject;
+          if (typeof input.description === "string") task.note = input.description;
+        }
       }
       if (block.name === "TodoWrite" && Array.isArray(input.todos)) todos = input.todos;
       if (block.name === "Write" && TODO_FILE.test(file)) written ??= file;
+      if ((block.name === "Write" || block.name === "Edit") && /decisions\.tsv$/.test(file)) trails.push(file);
       if (EDITS.has(block.name) && !RUN_FILE.test(file) && firstEdit === null) firstEdit = index;
     }
   }
 
-  const statuses = [...tasks.values(), ...(todos ?? []).map((todo) => todo?.status)];
+  const native = [
+    ...tasks.values(),
+    ...(todos ?? []).map((todo) => ({ text: String(todo?.content ?? ""), note: "", done: todo?.status === "completed" })),
+  ];
   return {
     list: { kind: list?.kind ?? null, beforeFirstEdit: Boolean(list) && (firstEdit === null || list.at < firstEdit) },
     firstEditSeen: firstEdit !== null,
@@ -111,13 +148,20 @@ export function scoreStream(events) {
     written,
     todoHints,
     checkRan,
-    gateBlocks,
+    gateBlocks: stops ? gateBlocks : null,
     playbook: playbook && path.basename(playbook, ".md"),
+    playbookRef: playbook,
     taskTools,
-    taskList: statuses.length ? { total: statuses.length, open: statuses.filter((status) => status !== "completed").length } : null,
+    taskList: taskCounts(native),
+    native: native.length ? native : null,
+    delegatesInFlight: background ?? launched.size,
+    delegates: launches,
     skills,
     commands,
+    trails,
     plugin,
+    tokens,
+    warnings: 0,
     result,
   };
 }
@@ -190,20 +234,119 @@ function unittest(repo, extra) {
       timeout: 60_000,
       env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
     });
+    if (run.error || run.signal) throw new Error(`python3 ${args.join(" ")} in ${repo}: ${run.error?.message ?? `killed by ${run.signal}`}`);
     return run.status === 0;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
+const CHECKBOX = /^- \[[ xX]\] /;
+const normalize = (text) =>
+  String(text)
+    .replace(CHECKBOX, "")
+    .replace(/^\d+\.\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export const checkboxes = (todo) => todo.split("\n").filter((line) => CHECKBOX.test(line));
+
+/**
+ * Verbatim fidelity: how many of the playbook's steps (open-run's `- [ ]` lines) appear as list
+ * items. Past checkbox and step number, with whitespace collapsed, an item keeps a step when it holds
+ * each of the step's sentences in order, so a `skip:` reason added before, between or after them
+ * still counts, and a reworded or shortened sentence does not.
+ */
+export function fidelity(steps, items) {
+  if (!steps.length) return null;
+  const texts = items.map(normalize);
+  const keeps = (text, step) => {
+    let at = 0;
+    for (const sentence of normalize(step).split(/(?<=[.!?])\s+/)) {
+      const found = text.indexOf(sentence, at);
+      if (found === -1) return false;
+      at = found + sentence.length;
+    }
+    return true;
+  };
+  return { steps: steps.length, matched: steps.filter((step) => texts.some((text) => keeps(text, step))).length };
+}
+
+export function outcome(exit, s, capped = false) {
+  // timeout exits 124 on its own signal, and 137 when -k had to follow with SIGKILL; a 137 before the cap is some other kill.
+  if (exit === 124 || (exit === 137 && capped)) return "timeout";
+  if (exit !== 0 || !s.result.ok) return "error";
+  if (s.delegatesInFlight === null) return "unknown";
+  if (s.delegatesInFlight > 0) return "delegate-in-flight";
+  return "clean";
+}
+
+/**
+ * The JSON lines of a stream or rollout, or null when the file is missing. A last line cut off
+ * mid-write, as a timeout kill leaves it, is dropped; a bad line anywhere else throws.
+ */
+export function readLines(file) {
+  if (!fs.existsSync(file)) return null;
+  const lines = fs.readFileSync(file, "utf8").split("\n").filter((line) => line.trim());
+  return lines.flatMap((line, i) => {
+    try {
+      return [JSON.parse(line)];
+    } catch (error) {
+      if (i === lines.length - 1) return [];
+      throw new Error(`${file}:${i + 1}: ${error.message}`);
+    }
+  });
+}
+
+function playbookSteps(plugin, playbook) {
+  const isBundled = playbook && !playbook.includes("/") && !playbook.endsWith(".md");
+  if (!isBundled) return [];
+  const script = path.join(plugin, "skills/poteto-mode/scripts/open-run.mjs");
+  if (!fs.existsSync(script)) return [];
+  const run = spawnSync(process.execPath, [script, "--dry-run", playbook], { encoding: "utf8" });
+  return run.status === 0 ? checkboxes(run.stdout) : [];
+}
+
+const TRAIL = /(?:^|[\s"'=(])([^\s"'|;&<>(){}=]*decisions\.tsv)\b/g;
+
+/**
+ * The trail of a run with no trail beside its list, as with a native-arm run, which keeps no list
+ * file: the last existing decisions.tsv named, shell commands first and then file writes, a
+ * relative one tried in each of the repo's worktrees, where a candidate on a branch keeps it.
+ */
+export function trailFrom(s, repo) {
+  const named = [...s.commands.flatMap((command) => [...command.matchAll(TRAIL)].map((m) => m[1])), ...(s.trails ?? [])];
+  return (
+    named
+      .flatMap((file) => (path.isAbsolute(file) ? [file] : worktrees(repo).map((tree) => path.join(tree, file))))
+      .findLast((file) => fs.existsSync(file)) ?? null
+  );
+}
+
+function copyCodexChildren(runDir, meta, events) {
+  const dir = path.join(runDir, "children");
+  const thread = events.find((e) => e.type === "thread.started")?.thread_id;
+  if (thread && meta.codexHome && fs.existsSync(meta.codexHome)) {
+    const partial = `${dir}.partial`;
+    fs.rmSync(partial, { recursive: true, force: true });
+    fs.mkdirSync(partial);
+    for (const file of childRollouts(path.join(meta.codexHome, "sessions"), thread)) fs.copyFileSync(file, path.join(partial, path.basename(file)));
+    // A rescore after the home lost sessions must not shrink what an earlier scoring captured.
+    const had = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+    const found = new Set(fs.readdirSync(partial));
+    if (had.every((file) => found.has(file))) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.renameSync(partial, dir);
+    } else fs.rmSync(partial, { recursive: true, force: true });
+  }
+  return fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((file) => readLines(path.join(dir, file))) : [];
+}
+
 function scoreRun(runDir) {
   const meta = JSON.parse(fs.readFileSync(path.join(runDir, "meta.json"), "utf8"));
-  const events = fs
-    .readFileSync(path.join(runDir, "out.jsonl"), "utf8")
-    .split("\n")
-    .filter((line) => line.startsWith("{"))
-    .map((line) => JSON.parse(line));
-  const s = scoreStream(events);
+  const runtime = meta.runtime ?? "claude";
+  const events = readLines(path.join(runDir, "out.jsonl")) ?? [];
+  const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl")), copyCodexChildren(runDir, meta, events)) : scoreStream(events);
 
   // The candidate's scratchpad is temporary, so the list and trail are copied out on first scoring.
   const kept = path.join(runDir, "todo.md");
@@ -219,22 +362,36 @@ function scoreRun(runDir) {
     const sibling = trailBeside(found);
     if (fs.existsSync(sibling)) fs.copyFileSync(sibling, trail);
   }
+  if (!fs.existsSync(trail)) {
+    const loose = trailFrom(s, meta.repo);
+    if (loose) fs.copyFileSync(loose, trail);
+  }
   const todo = fs.existsSync(kept) ? fs.readFileSync(kept, "utf8") : "";
   let openSteps = null;
   if (todo) {
     const check = spawnSync(process.execPath, [openRun, "--check", kept], { encoding: "utf8" });
-    openSteps = Number(check.stdout.match(/^(\d+) open$/m)?.[1] ?? NaN);
+    const counted = check.stdout.match(/^(\d+) open$/m);
+    if (!counted) throw new Error(`open-run --check ${kept} printed no count: ${check.stdout}${check.stderr}`);
+    openSteps = Number(counted[1]);
   }
+  const listText = todo || (s.native ?? []).map((item) => `- [${item.done ? "x" : " "}] ${item.text} ${item.note}`.trimEnd()).join("\n");
+  const items = todo ? checkboxes(todo) : (s.native ?? []).map((item) => item.text);
   const decisionRows = fs.existsSync(trail)
-    ? fs.readFileSync(trail, "utf8").split("\n").filter((l) => l.trim()).length - 1
+    ? Math.max(0, fs.readFileSync(trail, "utf8").split("\n").filter((l) => l.trim()).length - 1)
     : 0;
   const tree = workTree(meta.repo);
   const hidden = path.join(here, "tasks", meta.task, "hidden", "test_hidden.py");
 
-  const exit = path.join(runDir, "exit.json");
+  const exitFile = path.join(runDir, "exit.json");
+  const exit = fs.existsSync(exitFile) ? JSON.parse(fs.readFileSync(exitFile, "utf8")) : {};
   const score = {
+    scorer: SCORER,
     ...meta,
-    ...(fs.existsSync(exit) ? JSON.parse(fs.readFileSync(exit, "utf8")) : {}),
+    runtime,
+    ...exit,
+    outcome: outcome(exit.exit, s, exit.seconds >= meta.capMinutes * 60),
+    delegatesInFlight: s.delegatesInFlight,
+    delegates: s.delegates,
     pluginOk: s.plugin === meta.plugin,
     list: s.list.kind,
     listBeforeFirstEdit: s.list.beforeFirstEdit,
@@ -242,25 +399,29 @@ function scoreRun(runDir) {
     openSteps,
     checkRan: s.checkRan,
     gateBlocks: s.gateBlocks,
+    gateHeld: meta.arm === "todo-hook" && s.gateBlocks !== null ? s.gateBlocks > 0 : null,
     playbook: s.playbook,
+    fidelity: todo || s.native ? fidelity(playbookSteps(meta.plugin, s.playbookRef), items) : null,
     taskTools: s.taskTools,
     taskList: s.taskList,
     decisionRows,
     tree: tree.path,
     commits: tree.commits,
     gates: {
-      deslop: gate(s.skills.some((k) => /deslop/.test(k)), todo, /deslop/i),
-      noComments: gate(s.skills.some((k) => /no-comments/.test(k)), todo, /no-comments/i),
-      pr: gate(s.commands.some((c) => /\bgh pr create\b/.test(c)), todo, /Opening a PR/),
+      deslop: gate(s.skills.some((k) => /deslop/.test(k)), listText, /deslop/i),
+      noComments: gate(s.skills.some((k) => /no-comments/.test(k)), listText, /no-comments/i),
+      pr: gate(s.commands.some((c) => /\bgh pr create\b/.test(c)), listText, /Opening a PR/),
     },
     visibleTests: unittest(tree.path, null),
     hiddenTests: unittest(tree.path, hidden),
+    tokens: s.tokens,
+    warnings: s.warnings,
     ...s.result,
   };
   fs.writeFileSync(path.join(runDir, "score.json"), JSON.stringify(score, null, 2) + "\n");
   return score;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   for (const dir of process.argv.slice(2)) console.log(JSON.stringify(scoreRun(dir)));
 }

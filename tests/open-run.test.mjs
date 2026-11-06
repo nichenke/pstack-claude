@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSession, OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { listSessions, OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const skills = join(import.meta.dir, "../plugins/pstack/skills");
 const mode = join(skills, "poteto-mode");
@@ -20,6 +20,7 @@ function withDir(fn) {
 
 const bare = { ...process.env };
 delete bare.CLAUDE_CODE_SESSION_ID;
+delete bare.CODEX_THREAD_ID;
 
 function runAs(session, ...args) {
   const env = session === undefined ? bare : { ...bare, CLAUDE_CODE_SESSION_ID: session };
@@ -266,7 +267,7 @@ describe("open-run session marker", () => {
     withDir((dir) => {
       expect(runAs(SESSION, "bug-fix", dir).code).toBe(0);
       const todo = readFileSync(join(dir, "todo.md"), "utf8");
-      expect(listSession(todo)).toBe(SESSION);
+      expect(listSessions(todo)).toEqual([SESSION]);
       expect(todo.split("\n").filter((line) => line.includes(SESSION))).toEqual([`Session: ${SESSION}`]);
       expect(todo.indexOf(`Session: ${SESSION}`)).toBeLessThan(todo.indexOf("- [ ] "));
       const check = run("--check", join(dir, "todo.md"));
@@ -280,9 +281,38 @@ describe("open-run session marker", () => {
         const work = join(dir, `run${i}`);
         expect(runAs(session, "bug-fix", work).code).toBe(0);
         const todo = readFileSync(join(work, "todo.md"), "utf8");
-        expect(listSession(todo)).toBe(null);
+        expect(listSessions(todo)).toEqual([]);
         expect(todo).not.toContain("Session:");
       }
+    }));
+
+  test("marks the list with CODEX_THREAD_ID on Codex, and with both ids when both runtimes' ids are set", () =>
+    withDir((dir) => {
+      const thread = "01a1ae09-c8f1-78f3-ba8c-6c7e8651b1e1";
+      const codex = spawnSync("node", [script, "bug-fix", join(dir, "codex")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: thread } });
+      expect(codex.status).toBe(0);
+      expect(listSessions(readFileSync(join(dir, "codex/todo.md"), "utf8"))).toEqual([thread]);
+      const both = spawnSync("node", [script, "bug-fix", join(dir, "both")], {
+        encoding: "utf8",
+        env: { ...bare, CODEX_THREAD_ID: thread, CLAUDE_CODE_SESSION_ID: SESSION },
+      });
+      expect(both.status).toBe(0);
+      // A Codex session started from Claude Code inherits CLAUDE_CODE_SESSION_ID, so either id may be this run's.
+      expect(listSessions(readFileSync(join(dir, "both/todo.md"), "utf8"))).toEqual([SESSION, thread]);
+      const again = spawnSync("node", [script, "bug-fix", join(dir, "both")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: thread } });
+      expect(again.status).toBe(0);
+      expect(again.stdout).toContain("exists; left as is");
+      const nested = spawnSync("node", [script, "bug-fix", join(dir, "codex")], {
+        encoding: "utf8",
+        env: { ...bare, CODEX_THREAD_ID: "nested-thread", CLAUDE_CODE_SESSION_ID: thread },
+      });
+      // Reopening through an inherited id adds no stamp, so the nested run's own gate never holds it on the parent's list.
+      expect(nested.status).toBe(0);
+      expect(nested.stdout).toContain(`${join(dir, "codex/todo.md")} exists; left as is`);
+      expect(listSessions(readFileSync(join(dir, "codex/todo.md"), "utf8"))).toEqual([thread]);
+      const other = spawnSync("node", [script, "bug-fix", join(dir, "both")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: "someone-else" } });
+      expect(other.status).toBe(2);
+      expect(other.stderr).toContain(`belongs to session ${SESSION}, ${thread}`);
     }));
 
   test("reruns in the session that opened the list, and with no id on either side, leave it as is", () =>
@@ -326,7 +356,7 @@ describe("open-run session marker", () => {
       runAs("other-session", "bug-fix", dir);
       const result = runAs(SESSION, "--slug", "mine", "bug-fix", dir);
       expect(result.code).toBe(0);
-      expect(listSession(readFileSync(join(dir, "mine.todo.md"), "utf8"))).toBe(SESSION);
+      expect(listSessions(readFileSync(join(dir, "mine.todo.md"), "utf8"))).toEqual([SESSION]);
     }));
 });
 

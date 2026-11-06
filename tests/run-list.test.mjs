@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSession, OPENED, ownedList, RUN_FILE, sessionHeader, TODO_FILE, trailBeside } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { listSessions, OPENED, ownedList, RUN_FILE, sessionHeader, TODO_FILE, trailBeside } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const opened = (text) => [...text.matchAll(OPENED)].map((m) => m[1]);
 
@@ -71,15 +71,23 @@ describe("run file names", () => {
 });
 
 describe("list ownership", () => {
-  test("listSession reads the Session: line open-run writes, from the header block only", () => {
+  test("listSessions reads every Session: line in the header, and ownedList accepts a list naming the session on any of them", () => {
+    const both = "# x\n\nSession: claude-1\nSession: codex-1\n\n- [ ] 1. open\nSession: late\n";
+    expect(listSessions(both)).toEqual(["claude-1", "codex-1"]);
+    expect(listSessions("- [ ] 1. open\n")).toEqual([]);
+    expect(ownedList(["/l/todo.md"], "codex-1", () => both)).toBe("/l/todo.md");
+    expect(ownedList(["/l/todo.md"], "late", () => both)).toBe(null);
+  });
+
+  test("listSessions reads only well-formed Session: lines from the header block", () => {
     const header = ["# bug-fix", "", "Steps copied from poteto-mode/playbooks/bug-fix.md.", "", sessionHeader("s-1"), ""];
-    expect(listSession([...header, "- [ ] 1. open"].join("\n"))).toBe("s-1");
-    expect(listSession([...header.slice(0, 3), "", "- [ ] 1. open"].join("\r\n"))).toBe(null);
-    expect(listSession("# x\n\n- [ ] 1. step\nSession: s-1\n")).toBe(null);
-    expect(listSession("# x\n\n- [ ] Session: s-1\n")).toBe(null);
-    expect(listSession("Session: \n- [ ] 1. open\n")).toBe(null);
-    expect(listSession("Session: s 1\n")).toBe(null);
-    expect(listSession("")).toBe(null);
+    expect(listSessions([...header, "- [ ] 1. open"].join("\n"))).toEqual(["s-1"]);
+    expect(listSessions([...header.slice(0, 3), "", "- [ ] 1. open"].join("\r\n"))).toEqual([]);
+    expect(listSessions("# x\n\n- [ ] 1. step\nSession: s-1\n")).toEqual([]);
+    expect(listSessions("# x\n\n- [ ] Session: s-1\n")).toEqual([]);
+    expect(listSessions("Session: \n- [ ] 1. open\n")).toEqual([]);
+    expect(listSessions("Session: s 1\n")).toEqual([]);
+    expect(listSessions("")).toEqual([]);
   });
 
   test("ownedList walks back from the latest list to the first this session owns", () => {
