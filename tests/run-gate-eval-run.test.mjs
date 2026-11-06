@@ -256,6 +256,23 @@ describe("run-one.sh", () => {
     expect(runOne(b, "claude", "todo").status).toBe(0);
     expect(JSON.parse(readFileSync(join(b.root, "batch/runs/slugkit-claude-todo-1/score.json"), "utf8")).outcome).toBe("timeout");
   });
+
+  test("scores a SIGKILLed run as a timeout only once its wall-clock seconds reach the cap", () => {
+    const outcomeAfter = (elapsed) => {
+      const b = batch("todo");
+      writeFileSync(b.env.CLAUDE_BIN, "#!/usr/bin/env bash\nexit 137\n");
+      const bin = join(b.root, "bin");
+      mkdirSync(bin);
+      const date = join(bin, "date");
+      writeFileSync(date, `#!/usr/bin/env bash\nn=$(cat "${b.root}/ticks" 2>/dev/null || echo 0)\necho $((n + 1)) >"${b.root}/ticks"\necho $((1000 + (n > 0 ? ${elapsed} : 0)))\n`);
+      chmodSync(date, 0o755);
+      expect(sh("run-one.sh", [join(b.root, "batch"), "slugkit", "claude", "todo", "1"], { ...b.env, RUN_MINUTES: "1", PATH: `${bin}:${process.env.PATH}` }).status).toBe(0);
+      return scoreOf(b, "claude", "todo");
+    };
+    expect(outcomeAfter(59)).toMatchObject({ exit: 137, seconds: 59, capMinutes: 1, outcome: "error" });
+    expect(outcomeAfter(60)).toMatchObject({ exit: 137, seconds: 60, outcome: "timeout" });
+    expect(outcomeAfter(61)).toMatchObject({ outcome: "timeout" });
+  });
 });
 
 describe("task-settings.sh", () => {
