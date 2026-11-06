@@ -56,7 +56,7 @@ describe("report", () => {
 
   test("reports verbatim fidelity as the mean share of playbook steps kept", () => {
     const text = report("b", [score({ fidelity: { steps: 4, matched: 4 } }), score({ fidelity: { steps: 4, matched: 2 } }), score({ fidelity: null })]);
-    expect(row(text, "playbook steps kept verbatim (mean %)")).toBe("| playbook steps kept verbatim (mean %) | 75.0 |");
+    expect(row(text, "playbook steps kept verbatim (mean %)")).toBe("| playbook steps kept verbatim (mean %) | 75.0 (1 unknown) |");
   });
 });
 

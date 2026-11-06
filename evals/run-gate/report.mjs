@@ -47,6 +47,10 @@ const mean = (rows, pick) => {
   const values = rows.map(pick).filter((v) => typeof v === "number" && !Number.isNaN(v));
   return values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1) : "-";
 };
+const meanOfKnown = (rows, pick) => {
+  const unknown = rows.filter((s) => pick(s) === null).length;
+  return `${mean(rows, pick)}${unknown ? ` (${unknown} unknown)` : ""}`;
+};
 const counts = (rows, pick) => {
   const seen = Object.entries(Object.groupBy(rows.map(pick).filter(Boolean), (v) => v));
   return seen.length ? seen.map(([k, v]) => `${k} ${v.length}`).sort().join(", ") : "-";
@@ -57,17 +61,17 @@ const resolved = (s) => (s.todoKept || kept(s)) && (!s.todoKept || s.openSteps =
 export const minutes = (s) => (typeof s.seconds === "number" ? s.seconds / 60 : NaN);
 const gates = (rows, key) =>
   ["done", "skipped", "claimed", "missing"].map((g) => `${rows.filter((r) => r.gates[key] === g).length}`).join(" / ");
-const share = (s) => (s.fidelity ? (100 * s.fidelity.matched) / s.fidelity.steps : NaN);
+const share = (s) => (s.fidelity ? (100 * s.fidelity.matched) / s.fidelity.steps : null);
 
 const metrics = [
   ["runs finished clean", (r) => rate(r, (s) => s.outcome === "clean")],
   [`outcome ${OUTCOMES.join(" / ")}`, (r) => OUTCOMES.map((o) => r.filter((s) => s.outcome === o).length).join(" / ")],
   ["runs ended with a delegate in flight", (r) => rate(r, (s) => known(s.delegatesInFlight, (n) => n > 0))],
-  ["delegates launched (mean)", (r) => mean(r, (s) => s.delegates)],
+  ["delegates launched (mean)", (r) => meanOfKnown(r, (s) => s.delegates)],
   ["plugin arm loaded", (r) => rate(r, (s) => s.pluginOk)],
   ["list opened before first edit", (r) => rate(r, (s) => s.listBeforeFirstEdit)],
   ["list kind open-run / task-tool / todo.md", (r) => ["open-run", "task-tool", "todo.md"].map((k) => r.filter((s) => s.list === k).length).join(" / ")],
-  ["playbook steps kept verbatim (mean %)", (r) => mean(r, share)],
+  ["playbook steps kept verbatim (mean %)", (r) => meanOfKnown(r, share)],
   ["todo.md kept", (r) => rate(r, (s) => s.todoKept)],
   ["todo.md fully resolved at the end", (r) => rate(r, (s) => s.openSteps === 0)],
   ["task tools offered", (r) => rate(r, (s) => known(s.taskTools, Boolean))],
@@ -78,7 +82,7 @@ const metrics = [
   ["playbook routed", (r) => counts(r, (s) => s.playbook)],
   ["ran --check", (r) => rate(r, (s) => s.checkRan)],
   ["runs with a stop held by run-gate", (r) => rate(r, (s) => known(s.gateBlocks, (n) => n > 0))],
-  ["stops held by run-gate (mean)", (r) => mean(r, (s) => s.gateBlocks)],
+  ["stops held by run-gate (mean)", (r) => meanOfKnown(r, (s) => s.gateBlocks)],
   ["decision rows (mean)", (r) => mean(r, (s) => s.decisionRows)],
   ["deslop done / skipped / claimed / missing", (r) => gates(r, "deslop")],
   ["no-comments done / skipped / claimed / missing", (r) => gates(r, "noComments")],
