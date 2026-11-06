@@ -306,10 +306,10 @@ describe("open-run session marker", () => {
         encoding: "utf8",
         env: { ...bare, CODEX_THREAD_ID: "nested-thread", CLAUDE_CODE_SESSION_ID: thread },
       });
+      // Reopening through an inherited id adds no stamp, so the nested run's own gate never holds it on the parent's list.
       expect(nested.status).toBe(0);
-      expect(nested.stdout).toContain(`${join(dir, "codex/todo.md")} exists; added this session's id`);
-      expect([...nested.stdout.matchAll(OPENED)].map((m) => m[1])).toEqual([join(dir, "codex/todo.md")]);
-      expect(listSessions(readFileSync(join(dir, "codex/todo.md"), "utf8"))).toEqual([thread, "nested-thread"]);
+      expect(nested.stdout).toContain(`${join(dir, "codex/todo.md")} exists; left as is`);
+      expect(listSessions(readFileSync(join(dir, "codex/todo.md"), "utf8"))).toEqual([thread]);
       const other = spawnSync("node", [script, "bug-fix", join(dir, "both")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: "someone-else" } });
       expect(other.status).toBe(2);
       expect(other.stderr).toContain(`belongs to session ${SESSION}, ${thread}`);

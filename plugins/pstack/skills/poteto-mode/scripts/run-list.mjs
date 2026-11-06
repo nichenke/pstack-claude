@@ -15,7 +15,7 @@ export const RUN_FILE = new RegExp(`(?:^|${SEP})(?:(?:${SLUG_CHARS}\\.)?todo\\.m
  * absolute path: POSIX, drive-letter, or UNC.
  */
 export const OPENED = new RegExp(
-	String.raw`^((?:/|[A-Za-z]:${SEP}|\\\\).*?${SEP}(?:${SLUG_CHARS}\.)?todo\.md)(?:: \d+ steps| exists; left as is| exists; added this session's id)`,
+	String.raw`^((?:/|[A-Za-z]:${SEP}|\\\\).*?${SEP}(?:${SLUG_CHARS}\.)?todo\.md)(?:: \d+ steps| exists; left as is)`,
 	"gm",
 );
 
