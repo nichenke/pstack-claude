@@ -110,7 +110,14 @@ function open(playbook, dir, slug, dryRun) {
 			console.error(`open-run: ${todo} ${whose}. Pass --slug <task-slug> or choose another work dir.`);
 			process.exit(2);
 		}
-		console.log(`${todo} exists; left as is`);
+		const missing = sessions.filter((id) => !owners.includes(id));
+		if (owners.length && missing.length) {
+			const lines = fs.readFileSync(todo, "utf8").split("\n");
+			const lastOwner = lines.indexOf(sessionHeader(owners.at(-1)));
+			lines.splice(lastOwner + 1, 0, ...missing.map(sessionHeader));
+			fs.writeFileSync(todo, lines.join("\n"));
+			console.log(`${todo} exists; added this session's id`);
+		} else console.log(`${todo} exists; left as is`);
 	} else {
 		fs.writeFileSync(todo, body.join("\n") + "\n");
 		console.log(`${todo}: ${counts}`);

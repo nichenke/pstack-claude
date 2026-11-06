@@ -15,7 +15,7 @@ export const RUN_FILE = new RegExp(`(?:^|${SEP})(?:(?:${SLUG_CHARS}\\.)?todo\\.m
  * absolute path: POSIX, drive-letter, or UNC.
  */
 export const OPENED = new RegExp(
-	String.raw`^((?:/|[A-Za-z]:${SEP}|\\\\).*?${SEP}(?:${SLUG_CHARS}\.)?todo\.md)(?:: \d+ steps| exists; left as is)`,
+	String.raw`^((?:/|[A-Za-z]:${SEP}|\\\\).*?${SEP}(?:${SLUG_CHARS}\.)?todo\.md)(?:: \d+ steps| exists; left as is| exists; added this session's id)`,
 	"gm",
 );
 
@@ -51,9 +51,6 @@ export function listSessions(text) {
 	}
 	return ids;
 }
-
-/** The first session id in a list's header, or null when it has none. */
-export const listSession = (text) => listSessions(text)[0] ?? null;
 
 const readList = (file) => {
 	try {
