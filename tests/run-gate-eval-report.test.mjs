@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { minutes, report } from "../evals/run-gate/report.mjs";
 import { checkSmoke } from "../evals/run-gate/check-smoke.mjs";
+import { SCORER } from "../evals/run-gate/score.mjs";
 
 const score = (over) => ({
+  scorer: SCORER,
+  pluginOk: true,
   task: "slugkit",
   runtime: "claude",
   arm: "todo",
@@ -29,7 +36,9 @@ describe("report", () => {
       score({}),
     ]);
     expect(row(text, "runs finished clean")).toBe("| runs finished clean | 1/4 |");
-    expect(row(text, "outcome clean / delegate-in-flight / timeout / error")).toBe("| outcome clean / delegate-in-flight / timeout / error | 1 / 1 / 1 / 1 |");
+    expect(row(text, "outcome clean / delegate-in-flight / unknown / timeout / error")).toBe(
+      "| outcome clean / delegate-in-flight / unknown / timeout / error | 1 / 1 / 0 / 1 / 1 |",
+    );
     expect(row(text, "runs ended with a delegate in flight")).toBe("| runs ended with a delegate in flight | 1/4 |");
   });
 
@@ -58,12 +67,38 @@ describe("checkSmoke", () => {
     const runs = smoke();
     runs[0].list = "open-run";
     runs[1].outcome = "error";
-    delete runs[5].gateHeld;
+    runs[2].outcome = "unknown";
+    runs[2].pluginOk = false;
+    runs[2].stopErrors = 1;
+    runs[2].scorer = 1;
+    runs[5].gateHeld = null;
     expect(checkSmoke(runs.filter((s) => !(s.runtime === "codex" && s.arm === "todo")))).toEqual([
       "claude native: list open-run, expected task-tool",
       "claude todo: exit 0, outcome error",
+      "claude todo-hook: scored by scorer 1, not " + SCORER,
+      "claude todo-hook: the arm's plugin did not load",
+      "claude todo-hook: exit 0, outcome unknown",
+      "claude todo-hook: 1 Stop hook errors",
       "codex todo: 0 runs, expected 1",
       "codex todo-hook: gateHeld not recorded",
     ]);
+  });
+});
+
+describe("report.mjs as a command", () => {
+  test("names the jobs with no score and exits 1, run through a symlinked path", () => {
+    const root = mkdtempSync(join(tmpdir(), "report-"));
+    const batch = join(root, "batch");
+    mkdirSync(join(batch, "runs/slugkit-claude-todo-1"), { recursive: true });
+    writeFileSync(join(batch, "jobs.txt"), "slugkit claude todo 1\nslugkit codex todo 1\n");
+    writeFileSync(join(batch, "runs/slugkit-claude-todo-1/score.json"), JSON.stringify(score({})));
+    const link = join(root, "link");
+    symlinkSync(join(import.meta.dir, "../evals/run-gate"), link);
+    const r = spawnSync("node", [join(link, "report.mjs"), batch], { encoding: "utf8" });
+    expect(r.stdout).toContain("1 scored runs.");
+    expect(r.stdout).toContain("**1 of 2 jobs have no score:** slugkit-codex-todo-1.");
+    expect(r.status).toBe(1);
+    writeFileSync(join(batch, "jobs.txt"), "slugkit claude todo 1\n");
+    expect(spawnSync("node", [join(link, "report.mjs"), batch], { encoding: "utf8" }).status).toBe(0);
   });
 });

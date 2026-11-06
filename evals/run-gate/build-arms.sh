@@ -27,7 +27,7 @@ codex_home() {
     policy: {installation: "AVAILABLE", authentication: "ON_INSTALL", products: ["CODEX"]}}]}' \
     >"$root/.agents/plugins/marketplace.json"
   [[ -f $auth_home/auth.json ]] || { echo "build-arms: no $auth_home/auth.json; log in to Codex first" >&2; exit 1; }
-  # Linked, not copied, so no copy of the operator's credentials sits under WORK_ROOT.
+  # Linked to the operator's own login rather than copied.
   ln -s "$auth_home/auth.json" "$home/auth.json"
   if [[ -f $auth_home/AGENTS.md ]]; then ln -s "$auth_home/AGENTS.md" "$home/AGENTS.md"; fi
   CODEX_HOME=$home "$codex_bin" plugin marketplace add "$root" >/dev/null
@@ -42,7 +42,7 @@ for arm in native todo todo-hook; do
   lab=$(openssl rand -hex 2)
   root="$dest/$lab"
   target="$root/plugins/pstack"
-  mkdir -p "$root"
+  mkdir "$root"
   extract "$fork_rev" "$root"
   case $arm in
     native) "$here/strip-run-gate.sh" "$target" && node "$here/native-arm.mjs" "$target" && node "$here/codex-stop.mjs" --absent "$target" ;;

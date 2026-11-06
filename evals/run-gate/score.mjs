@@ -14,6 +14,8 @@ import { childRollouts, scoreCodex } from "./score-codex.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+/** Bumped whenever a score.json field changes meaning, so a report can refuse to mix scorers. */
+export const SCORER = 2;
 
 function resultText(block) {
   if (typeof block.content === "string") return block.content;
@@ -46,7 +48,11 @@ export function scoreStream(events) {
   let background = null;
   const launched = new Set();
   let launches = 0;
+  let stops = 0;
+  let stopErrors = 0;
+  let created = 0;
   let result = { ok: false, turns: null, ms: null, usd: null };
+  let tokens = null;
   const skills = [];
   const commands = [];
   const todoHints = [];
@@ -60,7 +66,9 @@ export function scoreStream(events) {
     }
     if (event.type === "system" && event.subtype === "hook_response" && event.hook_event === "Stop") {
       const said = [event.output, event.stderr, event.stdout].map((text) => String(text ?? "")).join("\n");
+      stops++;
       if (event.exit_code === 2 && said.includes("still has open steps")) gateBlocks++;
+      else if (event.exit_code !== 0 && event.exit_code !== 2) stopErrors++;
     }
     if (event.type === "system" && event.subtype === "background_tasks_changed" && Array.isArray(event.tasks)) {
       background = event.tasks.filter((task) => DELEGATE.test(String(task?.task_type ?? ""))).length;
@@ -74,6 +82,7 @@ export function scoreStream(events) {
     }
     if (event.type === "result") {
       result = { ok: !event.is_error, turns: event.num_turns, ms: event.duration_ms, usd: event.total_cost_usd };
+      tokens = event.usage ?? tokens;
     }
     const main = event.parent_tool_use_id == null;
     for (const block of event.message?.content ?? []) {
@@ -82,7 +91,8 @@ export function scoreStream(events) {
         const pending = creates.get(block.tool_use_id);
         if (pending) {
           creates.delete(block.tool_use_id);
-          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? String(tasks.size + 1), pending);
+          created++;
+          tasks.set(resultText(block).match(/Task #(\S+) created/)?.[1] ?? `unnumbered-${created}`, pending);
         }
       }
       if (event.type !== "assistant" || block.type !== "tool_use") continue;
@@ -139,8 +149,10 @@ export function scoreStream(events) {
     written,
     todoHints,
     checkRan,
-    gateBlocks,
+    gateBlocks: stops ? gateBlocks : null,
+    stopErrors,
     playbook: playbook && path.basename(playbook, ".md"),
+    playbookRef: playbook,
     taskTools,
     taskList: taskCounts(native),
     native: native.length ? native : null,
@@ -150,7 +162,8 @@ export function scoreStream(events) {
     commands,
     trails,
     plugin,
-    tokens: null,
+    tokens,
+    warnings: 0,
     result,
   };
 }
@@ -223,6 +236,7 @@ function unittest(repo, extra) {
       timeout: 60_000,
       env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
     });
+    if (run.error || run.signal) throw new Error(`python3 ${args.join(" ")} in ${repo}: ${run.error?.message ?? `killed by ${run.signal}`}`);
     return run.status === 0;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -263,21 +277,30 @@ export function fidelity(steps, items) {
 export function outcome(exit, s) {
   if (exit === 124) return "timeout";
   if (exit !== 0 || !s.result.ok) return "error";
+  if (s.delegatesInFlight === null) return "unknown";
   if (s.delegatesInFlight > 0) return "delegate-in-flight";
   return "clean";
 }
 
-const readLines = (file) =>
-  fs.existsSync(file)
-    ? fs
-        .readFileSync(file, "utf8")
-        .split("\n")
-        .filter((line) => line.startsWith("{"))
-        .map((line) => JSON.parse(line))
-    : [];
+/**
+ * The JSON lines of a stream or rollout, or null when the file is missing. A last line cut off
+ * mid-write, as a timeout kill leaves it, is dropped; a bad line anywhere else throws.
+ */
+export function readLines(file) {
+  if (!fs.existsSync(file)) return null;
+  const lines = fs.readFileSync(file, "utf8").split("\n").filter((line) => line.trim());
+  return lines.flatMap((line, i) => {
+    try {
+      return [JSON.parse(line)];
+    } catch (error) {
+      if (i === lines.length - 1) return [];
+      throw new Error(`${file}:${i + 1}: ${error.message}`);
+    }
+  });
+}
 
 function playbookSteps(plugin, playbook) {
-  const isBundled = playbook && !playbook.includes("/");
+  const isBundled = playbook && !playbook.includes("/") && !playbook.endsWith(".md");
   if (!isBundled) return [];
   const script = path.join(plugin, "skills/poteto-mode/scripts/open-run.mjs");
   if (!fs.existsSync(script)) return [];
@@ -305,8 +328,11 @@ function copyCodexChildren(runDir, meta, events) {
   const dir = path.join(runDir, "children");
   const thread = events.find((e) => e.type === "thread.started")?.thread_id;
   if (!fs.existsSync(dir) && thread && meta.codexHome) {
-    fs.mkdirSync(dir);
-    for (const file of childRollouts(path.join(meta.codexHome, "sessions"), thread)) fs.copyFileSync(file, path.join(dir, path.basename(file)));
+    const partial = `${dir}.partial`;
+    fs.rmSync(partial, { recursive: true, force: true });
+    fs.mkdirSync(partial);
+    for (const file of childRollouts(path.join(meta.codexHome, "sessions"), thread)) fs.copyFileSync(file, path.join(partial, path.basename(file)));
+    fs.renameSync(partial, dir);
   }
   return fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((file) => readLines(path.join(dir, file))) : [];
 }
@@ -314,7 +340,7 @@ function copyCodexChildren(runDir, meta, events) {
 function scoreRun(runDir) {
   const meta = JSON.parse(fs.readFileSync(path.join(runDir, "meta.json"), "utf8"));
   const runtime = meta.runtime ?? "claude";
-  const events = readLines(path.join(runDir, "out.jsonl"));
+  const events = readLines(path.join(runDir, "out.jsonl")) ?? [];
   const s = runtime === "codex" ? scoreCodex(events, readLines(path.join(runDir, "rollout.jsonl")), copyCodexChildren(runDir, meta, events)) : scoreStream(events);
 
   // The candidate's scratchpad is temporary, so the list and trail are copied out on first scoring.
@@ -339,12 +365,14 @@ function scoreRun(runDir) {
   let openSteps = null;
   if (todo) {
     const check = spawnSync(process.execPath, [openRun, "--check", kept], { encoding: "utf8" });
-    openSteps = Number(check.stdout.match(/^(\d+) open$/m)?.[1] ?? NaN);
+    const counted = check.stdout.match(/^(\d+) open$/m);
+    if (!counted) throw new Error(`open-run --check ${kept} printed no count: ${check.stdout}${check.stderr}`);
+    openSteps = Number(counted[1]);
   }
   const listText = todo || (s.native ?? []).map((item) => `- [${item.done ? "x" : " "}] ${item.text} ${item.note}`.trimEnd()).join("\n");
   const items = todo ? checkboxes(todo) : (s.native ?? []).map((item) => item.text);
   const decisionRows = fs.existsSync(trail)
-    ? fs.readFileSync(trail, "utf8").split("\n").filter((l) => l.trim()).length - 1
+    ? Math.max(0, fs.readFileSync(trail, "utf8").split("\n").filter((l) => l.trim()).length - 1)
     : 0;
   const tree = workTree(meta.repo);
   const hidden = path.join(here, "tasks", meta.task, "hidden", "test_hidden.py");
@@ -352,6 +380,7 @@ function scoreRun(runDir) {
   const exitFile = path.join(runDir, "exit.json");
   const exit = fs.existsSync(exitFile) ? JSON.parse(fs.readFileSync(exitFile, "utf8")) : {};
   const score = {
+    scorer: SCORER,
     ...meta,
     runtime,
     ...exit,
@@ -365,9 +394,10 @@ function scoreRun(runDir) {
     openSteps,
     checkRan: s.checkRan,
     gateBlocks: s.gateBlocks,
-    gateHeld: meta.arm === "todo-hook" ? s.gateBlocks > 0 : null,
+    stopErrors: s.stopErrors ?? null,
+    gateHeld: meta.arm === "todo-hook" && s.gateBlocks !== null && !s.stopErrors ? s.gateBlocks > 0 : null,
     playbook: s.playbook,
-    fidelity: fidelity(playbookSteps(meta.plugin, s.playbook), items),
+    fidelity: fidelity(playbookSteps(meta.plugin, s.playbookRef), items),
     taskTools: s.taskTools,
     taskList: s.taskList,
     decisionRows,
@@ -381,12 +411,13 @@ function scoreRun(runDir) {
     visibleTests: unittest(tree.path, null),
     hiddenTests: unittest(tree.path, hidden),
     tokens: s.tokens,
+    warnings: s.warnings,
     ...s.result,
   };
   fs.writeFileSync(path.join(runDir, "score.json"), JSON.stringify(score, null, 2) + "\n");
   return score;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   for (const dir of process.argv.slice(2)) console.log(JSON.stringify(scoreRun(dir)));
 }

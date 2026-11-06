@@ -2,10 +2,30 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { SCORER } from "./score.mjs";
 
 const RUNTIMES = ["claude", "codex"];
 const ARMS = ["native", "todo", "todo-hook"];
-const OUTCOMES = ["clean", "delegate-in-flight", "timeout", "error"];
+const OUTCOMES = ["clean", "delegate-in-flight", "unknown", "timeout", "error"];
+
+/** The jobs a batch ran, from its jobs.txt, as run directory names; empty when it has none. */
+export function batchJobs(batch) {
+  const file = path.join(batch, "jobs.txt");
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map((line) => line.split(" ").join("-"));
+}
+
+/** The lines a report opens with when the batch is incomplete or mixes scorers; empty when it is whole. */
+export function problems(batch, scores) {
+  const scored = new Set(fs.existsSync(path.join(batch, "runs")) ? fs.readdirSync(path.join(batch, "runs")).filter((dir) => fs.existsSync(path.join(batch, "runs", dir, "score.json"))) : []);
+  const unscored = batchJobs(batch).filter((job) => !scored.has(job));
+  const stale = scores.filter((s) => s.scorer !== SCORER).length;
+  return [
+    ...(unscored.length ? [`**${unscored.length} of ${unscored.length + scored.size} jobs have no score:** ${unscored.join(", ")}. See errors.log. Every rate below leaves them out.`] : []),
+    ...(stale ? [`**${stale} runs were scored by another scorer version than ${SCORER}.** Rescore them with score.mjs before comparing.`] : []),
+  ];
+}
 
 export function loadScores(batch) {
   const runs = path.join(batch, "runs");
@@ -83,6 +103,7 @@ export function report(batch, scores = loadScores(batch)) {
     "",
     `${scores.length} scored runs. Claude USD ${scores.reduce((a, s) => a + (s.usd ?? 0), 0).toFixed(2)}.`,
     "",
+    ...problems(batch, scores).flatMap((line) => [line, ""]),
     ...table("Metric", metrics.map(([name, fn]) => `| ${name} | ${columns.map((c) => fn(rows[c.name])).join(" | ")} |`)),
     ...[
       ["Held-out tests by task", (r) => rate(r, (s) => s.hiddenTests)],
@@ -99,4 +120,8 @@ export function report(batch, scores = loadScores(batch)) {
   ].join("\n");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) console.log(report(process.argv[2]));
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const scores = loadScores(process.argv[2]);
+  console.log(report(process.argv[2], scores));
+  if (problems(process.argv[2], scores).length) process.exitCode = 1;
+}

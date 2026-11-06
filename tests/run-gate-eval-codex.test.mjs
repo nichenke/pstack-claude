@@ -84,34 +84,65 @@ describe("scoreCodex", () => {
     const s = scoreCodex([started, done], rollout);
     expect(s.gateBlocks).toBe(1);
     expect(s.delegates).toBe(2);
+    const direct = { type: "response_item", payload: { type: "function_call", name: "spawn_agent", arguments: "{}" } };
+    expect(scoreCodex([started, done], [direct, direct]).delegates).toBe(2);
     expect(s.taskTools).toBe(true);
     expect(scoreCodex([started, done], []).taskTools).toBe(false);
   });
 
-  test("a failed turn, an error item other than the trust warning, or no completed turn is not ok", () => {
+  test("a failed turn or no completed turn is not ok, while an error item the run recovered from is a warning", () => {
     expect(scoreCodex([started, warning, done]).result.ok).toBe(true);
+    expect(scoreCodex([started, warning, done]).warnings).toBe(0);
     expect(scoreCodex([started, { type: "turn.failed", error: { message: "x" } }]).result.ok).toBe(false);
-    expect(scoreCodex([started, item({ type: "error", message: "stream disconnected" }), done]).result.ok).toBe(false);
+    const recovered = scoreCodex([started, item({ type: "error", message: "stream disconnected, reconnecting" }), done]);
+    expect([recovered.result.ok, recovered.warnings]).toEqual([true, 1]);
     expect(scoreCodex([started]).result.ok).toBe(false);
+  });
+
+  test("token usage is summed over every completed turn", () => {
+    const more = { type: "turn.completed", usage: { input_tokens: 10, output_tokens: 3 } };
+    expect(scoreCodex([started, done, more]).tokens).toEqual({ input_tokens: 110, cached_input_tokens: 50, output_tokens: 10 });
+  });
+
+  test("with no rollout found, every field only the rollout can supply is unknown", () => {
+    const s = scoreCodex([started, done], null, []);
+    expect([s.gateBlocks, s.taskTools, s.delegates, s.delegatesInFlight]).toEqual([null, null, null, null]);
   });
 });
 
 describe("Codex delegates", () => {
   const task = (type) => ({ type: "event_msg", payload: { type } });
 
+  const meta = (parent) => ({ type: "session_meta", payload: { id: `c-${parent}`, parent_thread_id: parent } });
+  const spawn = { type: "response_item", payload: { type: "function_call", name: "spawn_agent", arguments: "{}" } };
+
   test("a delegate whose last task event is a start was still in flight when the run ended", () => {
-    const abandoned = [task("task_started"), task("task_started")];
-    const finished = [task("task_started"), task("task_complete")];
-    const s = scoreCodex([started, done], [], [abandoned, finished]);
+    const abandoned = [meta(THREAD), task("task_started"), task("task_started")];
+    const finished = [meta(THREAD), task("task_started"), task("task_complete")];
+    const s = scoreCodex([started, done], [spawn, spawn], [abandoned, finished]);
     expect(s.delegatesInFlight).toBe(1);
     expect(s.delegates).toBe(2);
     expect(scoreCodex([started, done]).delegatesInFlight).toBe(0);
   });
 
+  test("more spawns than delegate rollouts found leaves the in-flight count unknown", () => {
+    const finished = [meta(THREAD), task("task_started"), task("task_complete")];
+    expect(scoreCodex([started, done], [spawn, spawn], [finished]).delegatesInFlight).toBe(null);
+    const grandchild = [meta("c-x"), task("task_started")];
+    expect(scoreCodex([started, done], [spawn], [finished, grandchild]).delegatesInFlight).toBe(1);
+  });
+
   test("a gate skill or command a delegate ran counts, from its rollout's CommandExecution items", () => {
-    const ran = (...command) => ({ type: "event_msg", payload: { type: "item_completed", item: { type: "CommandExecution", command, aggregated_output: "" } } });
-    const child = [task("task_started"), ran("/bin/zsh", "-lc", `cat ${ROOT}/skills/deslop/SKILL.md`), ran("/bin/zsh", "-lc", "gh pr create --fill"), task("task_complete")];
-    const s = scoreCodex([started, done], [], [child]);
+    const ran = (exit_code, ...command) => ({ type: "event_msg", payload: { type: "item_completed", item: { type: "CommandExecution", command, exit_code, aggregated_output: "" } } });
+    const child = [
+      meta(THREAD),
+      task("task_started"),
+      ran(0, "/bin/zsh", "-lc", `cat ${ROOT}/skills/deslop/SKILL.md`),
+      ran(1, "/bin/zsh", "-lc", `cat ${ROOT}/skills/no-comments/SKILL.md`),
+      ran(1, "/bin/zsh", "-lc", "gh pr create --fill"),
+      task("task_complete"),
+    ];
+    const s = scoreCodex([started, done], [spawn], [child]);
     expect(s.skills).toEqual(["deslop"]);
     expect(s.commands).toContain("/bin/zsh -lc gh pr create --fill");
     expect(s.list.kind).toBe(null);
@@ -120,12 +151,13 @@ describe("Codex delegates", () => {
   test("childRollouts follows parent_thread_id down from the run's thread, and skips other runs' threads", () => {
     const sessions = mkdtempSync(join(tmpdir(), "sessions-"));
     mkdirSync(join(sessions, "2026/11/05"), { recursive: true });
-    const rollout = (id, parent) => {
+    const rollout = (id, parent, source = { subagent: { thread_spawn: { parent_thread_id: parent, depth: 1 } } }) => {
       const file = join(sessions, "2026/11/05", `rollout-x-${id}.jsonl`);
-      writeFileSync(file, `${JSON.stringify({ type: "session_meta", payload: { id, ...(parent ? { parent_thread_id: parent } : {}) } })}\n`);
+      writeFileSync(file, `${JSON.stringify({ type: "session_meta", payload: { id, ...(parent ? { parent_thread_id: parent, source } : {}) } })}\n`);
       return file;
     };
     rollout("main");
+    rollout("guardian", "main", { subagent: { other: "guardian" } });
     const child = rollout("child", "main");
     const grandchild = rollout("grandchild", "child");
     rollout("other");

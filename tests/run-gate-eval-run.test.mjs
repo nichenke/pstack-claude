@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -149,6 +149,86 @@ describe("run-one.sh", () => {
     const hook = batch("todo-hook");
     expect(runOne(hook, "codex", "todo-hook").status).toBe(0);
     expect(argsOf(hook, "codex")).not.toContain("tools.update_plan.enabled=true");
+  });
+
+  // Replaces a stub's body, keeping the preamble that records its arguments and environment.
+  const restub = (b, name, body) => stub(b.root, name, body);
+  const scoreOf = (b, runtime, arm) => JSON.parse(readFileSync(join(b.root, `batch/runs/slugkit-${runtime}-${arm}-1/score.json`), "utf8"));
+  const tmpLeft = (b) => readdirSync(join(b.env.WORK_ROOT, ".tmp"));
+
+  test("scores a codex run that died before it made a sessions dir as an error, and cleans up", () => {
+    const b = batch("todo");
+    rmSync(join(b.home, "sessions"), { recursive: true });
+    restub(b, "codex", "echo 'Error: bad config' >&2; exit 1");
+    const r = runOne(b, "codex", "todo");
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("run-one: no rollout for thread ''");
+    expect(scoreOf(b, "codex", "todo")).toMatchObject({ exit: 1, outcome: "error", gateBlocks: null, delegates: null });
+    expect(tmpLeft(b)).toEqual([]);
+  });
+
+  test("scores a codex stream cut off mid-line by a timeout as a timeout", () => {
+    const b = batch("todo-hook");
+    restub(b, "codex", `echo '{"type":"thread.started","thread_id":"th1"}'; printf '{"type":"item.completed","item":{"ty'; exit 124`);
+    expect(runOne(b, "codex", "todo-hook").status).toBe(0);
+    expect(scoreOf(b, "codex", "todo-hook")).toMatchObject({ exit: 124, outcome: "timeout", gateHeld: null });
+  });
+
+  test("scores a codex run that left a spawned delegate running as delegate-in-flight, from its copied rollout", () => {
+    const b = batch("native");
+    const day = "$CODEX_HOME/sessions/2026/11/05";
+    const meta = (id, parent) =>
+      JSON.stringify({ type: "session_meta", payload: { id, parent_thread_id: parent, source: { subagent: { thread_spawn: { parent_thread_id: parent, depth: 1 } } } } });
+    restub(
+      b,
+      "codex",
+      [
+        `echo '{"type":"thread.started","thread_id":"th1"}'`,
+        `echo '{"type":"turn.completed","usage":{"output_tokens":3}}'`,
+        `printf '%s\\n' '{"type":"session_meta","payload":{"id":"th1"}}' '{"type":"response_item","payload":{"type":"function_call","name":"spawn_agent","arguments":"{}"}}' >"${day}/rollout-x-th1.jsonl"`,
+        `printf '%s\\n' '${meta("ch1", "th1")}' '{"type":"event_msg","payload":{"type":"task_started"}}' >"${day}/rollout-x-ch1.jsonl"`,
+      ].join("\n"),
+    );
+    expect(runOne(b, "codex", "native").status).toBe(0);
+    const run = join(b.root, "batch/runs/slugkit-codex-native-1");
+    expect(scoreOf(b, "codex", "native")).toMatchObject({ outcome: "delegate-in-flight", delegates: 1, delegatesInFlight: 1 });
+    expect(readdirSync(join(run, "children"))).toEqual(["rollout-x-ch1.jsonl"]);
+    expect(tmpLeft(b)).toEqual([]);
+  });
+
+  test("scores a native claude run's gates and fidelity from its task list", () => {
+    const b = batch("native");
+    const plugin = join(import.meta.dir, "../plugins/pstack");
+    const openRun = join(plugin, "skills/poteto-mode/scripts/open-run.mjs");
+    const steps = spawnSync("node", [openRun, "--dry-run", "bug-fix"], { encoding: "utf8" }).stdout.split("\n").filter((l) => l.startsWith("- [ ] ")).map((l) => l.slice(6));
+    let n = 0;
+    const use = (name, input) => ({ type: "assistant", parent_tool_use_id: null, message: { content: [{ type: "tool_use", id: `t${++n}`, name, input }] } });
+    const result = (text) => ({ type: "user", parent_tool_use_id: null, message: { content: [{ type: "tool_result", tool_use_id: `t${n}`, content: [{ type: "text", text }] }] } });
+    const events = [
+      { type: "system", subtype: "init", session_id: "s1", plugins: [{ name: "pstack", path: plugin }] },
+      use("Bash", { command: `node ${openRun} --dry-run bug-fix` }),
+      ...steps.flatMap((subject, i) => [use("TaskCreate", { subject, description: "" }), result(`Task #${i + 1} created successfully: ${subject}`)]),
+      ...steps.map((subject, i) => use("TaskUpdate", { taskId: String(i + 1), status: "completed", ...(/deslop/.test(subject) ? { description: "skip: one-line diff" } : {}) })),
+      { type: "result", is_error: false, num_turns: 3 },
+    ];
+    const stream = join(b.root, "native.jsonl");
+    writeFileSync(stream, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+    restub(b, "claude", `cat '${stream}'`);
+    expect(runOne(b, "claude", "native").status).toBe(0);
+    const score = scoreOf(b, "claude", "native");
+    expect(score.fidelity).toEqual({ steps: steps.length, matched: steps.length });
+    expect(score).toMatchObject({ list: "task-tool", playbook: "bug-fix", pluginOk: true, taskList: { total: steps.length, open: 0, skipped: 1 } });
+    expect(score.gates).toMatchObject({ deslop: "skipped", noComments: "claimed" });
+  });
+
+  test("runs both runtimes under macOS's stock bash 3.2", () => {
+    if (!existsSync("/bin/bash")) return;
+    for (const runtime of ["claude", "codex"]) {
+      const b = batch("todo");
+      const r = spawnSync("/bin/bash", [join(evalDir, "run-one.sh"), join(b.root, "batch"), "slugkit", runtime, "todo", "1"], { encoding: "utf8", env: { ...clean, ...b.env } });
+      expect(r.status).toBe(0);
+      expect(scoreOf(b, runtime, "todo").outcome).toBe("clean");
+    }
   });
 
   test("records a timed-out run as a timeout", () => {

@@ -32,10 +32,10 @@ GIT_AUTHOR_DATE=2026-09-01T12:00:00Z GIT_COMMITTER_DATE=2026-09-01T12:00:00Z \
 run_tmp=$(mktemp -d -p "$work_root/.tmp")
 
 jq -n --arg task "$task" --arg runtime "$runtime" --arg arm "$arm" --argjson rep "$rep" --arg repo "$repo" \
-  --arg plugin "$plugin" --arg model "$model" --argjson minutes "$minutes" --argjson budget "$budget" --arg tmp "$run_tmp" \
+  --arg plugin "$plugin" --arg model "$model" --argjson cap "$minutes" --argjson budget "$budget" --arg tmp "$run_tmp" \
   --arg home "$codex_home" \
   '{task: $task, runtime: $runtime, arm: $arm, rep: $rep, repo: $repo, plugin: $plugin, model: $model,
-    minutes: $minutes, budget: (if $runtime == "claude" then $budget else null end), tmp: $tmp,
+    capMinutes: $cap, budget: (if $runtime == "claude" then $budget else null end), tmp: $tmp,
     codexHome: (if $runtime == "codex" then $home else null end)}' \
   >"$run_dir/meta.json"
 
@@ -51,7 +51,7 @@ if [[ $runtime == claude ]]; then
     cd "$repo"
     # The settings flag keeps an installed copy of pstack from loading beside the arm.
     env "${codex_parent[@]}" -u CLAUDE_CODE_ENABLE_TODO_TOOLS TMPDIR="$run_tmp" ${native[@]+"${native[@]}"} \
-      timeout "$((minutes * 60))" "${CLAUDE_BIN:-claude}" -p "/pstack:poteto-mode $prompt_text" \
+      timeout -k 60 "$((minutes * 60))" "${CLAUDE_BIN:-claude}" -p "/pstack:poteto-mode $prompt_text" \
       --plugin-dir "$plugin" \
       --settings '{"enabledPlugins":{"pstack@pstack-claude":false}}' \
       --model "$model" \
@@ -71,7 +71,7 @@ else
   # commit, and the scored repo never changes.
   env "${claude_parent[@]}" \
     CODEX_HOME="$codex_home" TMPDIR="$run_tmp" \
-    timeout "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write --add-dir "$repo/.git" \
+    timeout -k 60 "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write --add-dir "$repo/.git" \
     -c approval_policy='"never"' ${flags[@]+"${flags[@]}"} "\$pstack:poteto-mode $prompt_text" \
     </dev/null >"$run_dir/out.jsonl" 2>"$run_dir/err.log"
 fi
@@ -80,9 +80,13 @@ set -e
 echo "{\"exit\": $status, \"seconds\": $(($(date +%s) - started))}" >"$run_dir/exit.json"
 
 if [[ $runtime == codex ]]; then
-  thread=$(jq -r 'select(.type == "thread.started") | .thread_id' "$run_dir/out.jsonl" 2>/dev/null | head -1)
-  rollout=$(find "$codex_home/sessions" -name "rollout-*-$thread.jsonl" 2>/dev/null | head -1)
-  if [[ -n $thread && -n $rollout ]]; then cp "$rollout" "$run_dir/rollout.jsonl"; fi
+  # A codex that died early leaves no thread and no sessions dir; the scorer then reports the rollout's fields unknown.
+  thread=$(jq -rRn 'first(inputs | fromjson? | select(.type == "thread.started") | .thread_id) // empty' "$run_dir/out.jsonl") || thread=
+  rollout=
+  if [[ -n $thread && -d $codex_home/sessions ]]; then
+    rollout=$(find "$codex_home/sessions" -name "rollout-*-$thread.jsonl" -print -quit) || rollout=
+  fi
+  if [[ -n $rollout ]]; then cp "$rollout" "$run_dir/rollout.jsonl"; else echo "run-one: no rollout for thread '$thread' in $codex_home" >&2; fi
 fi
 
 node "$here/score.mjs" "$run_dir" >/dev/null || echo "run-one: scoring $run_dir failed" >&2

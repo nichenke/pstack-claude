@@ -95,6 +95,7 @@ printf '%s\n' "$jobs" >"$batch/jobs.txt"
 
 echo "batch $batch: $summary"
 # shellcheck disable=SC2016 # $0..$5 expand inside the child bash, not here.
-xargs -P "${PARALLEL:-3}" -L 1 bash -c '"$0" "$1" "$2" "$3" "$4" "$5" || true' "$here/run-one.sh" "$batch" <"$batch/jobs.txt" \
+xargs -P "${PARALLEL:-3}" -L 1 bash -c '"$0" "$1" "$2" "$3" "$4" "$5" 2>>"$1/errors.log" || echo "$2 $3 $4 $5 failed" >>"$1/errors.log"' \
+  "$here/run-one.sh" "$batch" <"$batch/jobs.txt" \
   | tee "$batch/progress.log"
 node "$here/report.mjs" "$batch" | tee "$batch/report.md"

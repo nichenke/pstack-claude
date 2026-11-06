@@ -31,7 +31,7 @@ A Codex home links `auth.json` and `AGENTS.md` from `CODEX_AUTH_HOME` (default `
 
 The Codex homes are rebuilt per batch, so no hook in them carries persisted trust, the SessionStart hook included. `run.sh` refuses a batch with Codex runs unless you set `CODEX_HOOKS=bypass`, which passes `--dangerously-bypass-hook-trust` to every Codex run. That variable is the operator's approval of the arm's hooks.
 
-Each runtime's candidate gets the other runtime's session id scrubbed from its environment, so a Codex batch started from a Claude Code shell cannot stamp the outer session id on a list.
+Each runtime's candidate gets the other runtime's session id scrubbed from its environment, so a Codex batch started from a Claude Code shell does not stamp the outer session id on a list beside its own.
 
 ## Tasks
 
@@ -78,9 +78,9 @@ CODEX_HOOKS=bypass evals/run-gate/run.sh 5            # every task x runtime x a
 
 An exported `BUDGET_USD` or `RUN_MINUTES` wins over a task's `task.env`.
 
-Each run starts as `/pstack:poteto-mode <prompt>` on Claude Code, with `--strict-mcp-config`, `--permission-mode auto` and `--permission-prompts none`, and as `$pstack:poteto-mode <prompt>` on Codex. Each gets its own `TMPDIR` under `WORK_ROOT/.tmp`, removed after scoring. That does not stop a candidate from naming `/private/tmp` itself, as Codex candidates did in the smoke runs; open-run's session stamp keeps such a shared dir from handing one run another's list.
+Each run starts as `/pstack:poteto-mode <prompt>` on Claude Code, with `--strict-mcp-config`, `--permission-mode auto` and `--permission-prompts none`, and as `$pstack:poteto-mode <prompt>` on Codex. Each gets its own `TMPDIR` under `WORK_ROOT/.tmp`, removed after scoring. That does not stop a candidate from naming `/private/tmp` itself, as Codex candidates did in the smoke runs. open-run's session stamp keeps such a shared dir from handing one run another's list, but a `decisions.tsv` carries no stamp, so two concurrent native-arm runs that pick the same path can be scored on one trail.
 
-Results land in `results/<timestamp>/`, which git ignores: `arms.tsv` maps arm to label and paths, `settings.txt` holds each task's limits, and `runs/<task>-<runtime>-<arm>-<rep>/` holds the stream, the copied `todo.md` and `decisions.tsv`, Codex's `rollout.jsonl` and `children/` delegate rollouts, and `score.json`. `report.md` has a column per runtime and arm.
+Results land in `results/<timestamp>/`, which git ignores: `arms.tsv` maps arm to label and paths, `settings.txt` holds each task's limits, `jobs.txt` the jobs, `errors.log` each job's runner diagnostics, and `runs/<task>-<runtime>-<arm>-<rep>/` holds the stream, the copied `todo.md` and `decisions.tsv`, Codex's `rollout.jsonl` and `children/` delegate rollouts, and `score.json`. `report.md` has a column per runtime and arm. It opens by naming every job in `jobs.txt` with no `score.json`, since each rate counts scored runs only, and every run scored by an older `SCORER` than `score.mjs` carries; `report.mjs` then exits 1, and so does `run.sh`.
 
 ## Scoring
 
@@ -88,9 +88,11 @@ Results land in `results/<timestamp>/`, which git ignores: `arms.tsv` maps arm t
 
 - **List.** A list open-run reports counts only when its `Session:` line names the run's own session, the rule the Stop hook uses. The native list is the main thread's `TaskCreate` tasks under their last `TaskUpdate`, merged with its last `TodoWrite`, or Codex's last `todo_list`. A native task is open until completed, and skipped when completed with a `skip:`, `n/a:` or `BLOCKED:` reason in its subject, description or step text.
 - **Verbatim fidelity**, every arm. The playbook's steps are the `- [ ]` lines the arm's own `open-run.mjs --dry-run` prints for the routed playbook, matched against list items by `fidelity` in `score.mjs`. A run that routed to no bundled playbook has no score.
-- **Gates.** A gate is `done` when the run did it, `skipped` when its line carries a filled-in reason, `claimed` when it is checked off but never run, else `missing`. A native list's gates are read from its tasks the same way.
-- **Outcome.** `timeout` when the cap killed the run (exit 124), `error` on any other non-zero exit or a failed or missing result, `delegate-in-flight` when the run ended with a delegate still running, else `clean`. Which delegates count as running is in the `scoreStream` and `scoreCodex` docstrings.
-- **Gate held.** `gateHeld` is whether run-gate held a stop, on the `todo-hook` arm only: a Stop hook response on Claude Code, a `HookPrompt` in the rollout on Codex.
+- **Gates.** A gate is `done` when the run invoked it (a Skill call, a Codex command that read its `SKILL.md` and exited 0, or a `gh pr create`, which fails in these remote-less repos, so PR `done` means attempted), `skipped` when its line carries a filled-in reason, `claimed` when it is checked off but never run, else `missing`. A native list's gates are read from its tasks the same way.
+- **Outcome.** `timeout` when the cap killed the run (exit 124), `error` on any other non-zero exit or a failed or missing result, `unknown` when a Codex run's rollouts could not settle whether a delegate was still running, `delegate-in-flight` when one was, else `clean`. Which delegates count as running is in the `scoreStream` and `scoreCodex` docstrings.
+- **Delegates.** On Claude Code, background agents and workflows only, since a foreground agent blocks the main turn; on Codex, the main thread's `spawn_agent` calls, which never block.
+- **Plugin loaded.** On Claude Code the `init` event's plugin path; on Codex the plugin root of the first command that read poteto-mode's files, which is null for a run that never did.
+- **Gate held.** `gateHeld` is whether run-gate held a stop, on the `todo-hook` arm only: a Stop hook response on Claude Code, a `HookPrompt` in the rollout on Codex. It is null when there is no evidence either way: no Stop hook response at all, a Stop hook that errored, or no rollout. Codex records only a held stop, not one let through.
 - **Time.** Minutes are wall-clock `seconds` from `exit.json`, for the reason `report.mjs` gives.
 
 `tests/run-gate-eval-*.test.mjs` cover the stream rules, the arm builds, the runner against stub binaries, and the report.

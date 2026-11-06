@@ -10,7 +10,7 @@ export const DELEGATE = /agent|workflow/;
 
 export function openRunPlaybook(command) {
   if (!/open-run\.mjs\b/.test(command) || /--check\b/.test(command)) return null;
-  return command.match(/open-run\.mjs\s+(?:--(?:slug\s+\S+|dry-run)\s+)*["']?([^\s"';&|)]+)/)?.[1] ?? null;
+  return command.match(/open-run\.mjs\s+(?:--(?:slug(?:=|\s+)\S+|dry-run)\s+)*["']?([^\s"';&|)]+)/)?.[1] ?? null;
 }
 
 export function taskCounts(items) {

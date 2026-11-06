@@ -7,19 +7,23 @@ import { openRunPlaybook, taskCounts, TODO_REDIRECT } from "./score-common.mjs";
 const SKILL_READ = /\/skills\/(?:([a-z0-9-]+)|\{([a-z0-9-]+(?:,[a-z0-9-]+)*)\})\/SKILL\.md\b/g;
 const PLUGIN_ROOT = /(\/[^\s'"]*?)\/skills\/poteto-mode\//;
 // codex exec reports its own --dangerously-bypass-hook-trust warning as an error item.
-const HOOK_TRUST_WARNING = /dangerously-bypass-hook-trust/;
+const HOOK_TRUST_WARNING = "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.";
+const skillReads = (command) => [...command.matchAll(SKILL_READ)].flatMap(([, name, names]) => (name ? [name] : names.split(",")));
+const sum = (a, b) => Object.fromEntries([...new Set([...Object.keys(a ?? {}), ...Object.keys(b)])].map((k) => [k, (a?.[k] ?? 0) + (b[k] ?? 0)]));
 
 /**
  * `events` are the exec stream's lines, which carry only the main thread's items: a list opened, an
- * edit or a skill read by a delegate does not reach them. `rollout` is the thread's rollout file,
- * which alone records three things: each Stop hook block (a HookPrompt item), whether `update_plan`
- * was offered (code mode declares it inside the `exec` tool), and each `spawn_agent` call, which
- * code mode holds only as JavaScript source.
+ * edit or a skill read by a delegate does not reach them. `rollout` is the thread's rollout file, or
+ * null when none was found, which leaves every rollout-only field null;
+ * it alone records each Stop hook block (a HookPrompt item), whether `update_plan` was offered (code
+ * mode declares it inside the `exec` tool), and each `spawn_agent` call, either a direct function
+ * call or JavaScript inside a code-mode `exec`.
  * `children` are the rollouts of the delegates it spawned, each a list of parsed lines. Their
  * CommandExecution items add skills and commands, as a Claude delegate's do, but never a list or an
  * edit. One whose last task event is a start was still running when the run ended (README
- * § Delegates). `delegates` counts launches.
- * A skill counts as run when a command read its SKILL.md, since Codex has no skill tool.
+ * § Delegates); `delegatesInFlight` is null when the run spawned more delegates than rollouts were
+ * found for. `delegates` counts the main thread's spawns.
+ * A skill counts as run when a command that exited 0 read its SKILL.md, since Codex has no skill tool.
  */
 export function scoreCodex(events, rollout = [], children = []) {
   let index = 0;
@@ -35,6 +39,7 @@ export function scoreCodex(events, rollout = [], children = []) {
   let completed = false;
   let failed = false;
   let tokens = null;
+  let warnings = 0;
   const skills = [];
   const commands = [];
   const todoHints = [];
@@ -44,7 +49,7 @@ export function scoreCodex(events, rollout = [], children = []) {
     if (event.type === "thread.started") session ??= event.thread_id ?? null;
     if (event.type === "turn.completed") {
       completed = true;
-      tokens = event.usage ?? tokens;
+      if (event.usage) tokens = sum(tokens, event.usage);
     }
     if (event.type === "turn.failed" || event.type === "error") failed = true;
     const item = event.item;
@@ -55,14 +60,14 @@ export function scoreCodex(events, rollout = [], children = []) {
       todos = item.items;
       list ??= { kind: "task-tool", at: index };
     }
-    if (item.type === "error" && event.type === "item.completed" && !HOOK_TRUST_WARNING.test(String(item.message))) failed = true;
+    if (item.type === "error" && event.type === "item.completed" && item.message !== HOOK_TRUST_WARNING) warnings++;
     if (event.type !== "item.completed") continue;
 
     let kind = null;
     if (item.type === "command_execution") {
       const command = String(item.command ?? "");
       commands.push(command);
-      for (const [, name, names] of command.matchAll(SKILL_READ)) skills.push(...(name ? [name] : names.split(",")));
+      if (item.exit_code === 0) skills.push(...skillReads(command));
       plugin ??= command.match(PLUGIN_ROOT)?.[1] ?? null;
       for (const match of String(item.aggregated_output ?? "").matchAll(OPENED)) opened.push(match[1]);
       if (/open-run\.mjs\b/.test(command) && /--check\b/.test(command)) checkRan = true;
@@ -92,13 +97,13 @@ export function scoreCodex(events, rollout = [], children = []) {
       if (ran?.type !== "CommandExecution") continue;
       const command = Array.isArray(ran.command) ? ran.command.join(" ") : String(ran.command ?? "");
       commands.push(command);
-      for (const [, name, names] of command.matchAll(SKILL_READ)) skills.push(...(name ? [name] : names.split(",")));
+      if (ran.exit_code === 0) skills.push(...skillReads(command));
     }
 
   let gateBlocks = 0;
   let delegates = 0;
   let taskTools = false;
-  for (const entry of rollout) {
+  for (const entry of rollout ?? []) {
     const payload = entry?.payload;
     if (entry?.type === "event_msg" && payload?.type === "item_completed" && payload.item?.type === "HookPrompt") {
       if ((payload.item.fragments ?? []).some((part) => String(part?.text).includes("still has open steps"))) gateBlocks++;
@@ -106,6 +111,7 @@ export function scoreCodex(events, rollout = [], children = []) {
     if (entry?.type === "response_item" && payload?.type === "custom_tool_call") {
       delegates += (String(payload.input ?? "").match(/\bspawn_agent\s*\(/g) ?? []).length;
     }
+    if (entry?.type === "response_item" && payload?.type === "function_call" && payload.name === "spawn_agent") delegates++;
     if (entry?.type === "response_item" && payload?.type === "additional_tools" && /\bupdate_plan\(/.test(JSON.stringify(payload.tools))) {
       taskTools = true;
     }
@@ -120,13 +126,15 @@ export function scoreCodex(events, rollout = [], children = []) {
     written,
     todoHints,
     checkRan,
-    gateBlocks,
+    gateBlocks: rollout ? gateBlocks : null,
     playbook: playbook && path.basename(playbook, ".md"),
-    taskTools: taskTools || todos !== null,
+    playbookRef: playbook,
+    taskTools: rollout ? taskTools || todos !== null : null,
     taskList: taskCounts(native),
     native: native.length ? native : null,
-    delegatesInFlight: children.filter(running).length,
-    delegates: Math.max(delegates, children.length),
+    delegatesInFlight: !rollout || delegates > children.filter((child) => parent(child) === session).length ? null : children.filter(running).length,
+    delegates: rollout ? delegates : null,
+    warnings,
     skills,
     commands,
     trails,
@@ -137,6 +145,7 @@ export function scoreCodex(events, rollout = [], children = []) {
 }
 
 const TASK_EVENTS = new Set(["task_started", "task_complete"]);
+const parent = (lines) => (lines[0]?.type === "session_meta" ? lines[0].payload?.parent_thread_id : null);
 const running = (lines) => lines.filter((e) => e?.type === "event_msg" && TASK_EVENTS.has(e.payload?.type)).at(-1)?.payload.type === "task_started";
 
 function sessionMeta(file) {
@@ -155,7 +164,8 @@ function sessionMeta(file) {
 
 /**
  * The rollout files under a Codex home's `sessions` dir that descend from `thread`, through each
- * one's `session_meta.parent_thread_id`, so a delegate's own delegates count too.
+ * one's `session_meta.parent_thread_id`, so a delegate's own delegates count too. Only spawned
+ * threads count: a guardian approval review names the same parent but is no delegate.
  */
 export function childRollouts(sessions, thread) {
   const files = fs.existsSync(sessions)
@@ -167,7 +177,7 @@ export function childRollouts(sessions, thread) {
   for (let grew = true; grew; ) {
     grew = false;
     for (const { file, meta } of metas)
-      if (!family.has(meta.id) && family.has(meta.parent_thread_id)) {
+      if (!family.has(meta.id) && family.has(meta.parent_thread_id) && meta.source?.subagent?.thread_spawn) {
         family.add(meta.id);
         found.push(file);
         grew = true;

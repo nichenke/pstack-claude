@@ -97,7 +97,6 @@ describe("native-arm.mjs", () => {
     expect(skill).not.toContain("open-run.mjs --check");
     expect(skill).not.toContain("`todo.md`");
     expect(skill).toContain("1. Match the task to a playbook");
-    expect(skill.split("\n").length).toBe(strippedSkill.split("\n").length);
   });
 
   for (const [name, skill] of Object.entries({

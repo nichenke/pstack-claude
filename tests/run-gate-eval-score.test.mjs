@@ -289,7 +289,7 @@ describe("outcome", () => {
   test("a failed result is an error, a live delegate is its own outcome, and the rest are clean", () => {
     expect(outcome(0, { ...ok, result: { ok: false } })).toBe("error");
     expect(outcome(0, { ...ok, delegatesInFlight: 2 })).toBe("delegate-in-flight");
-    expect(outcome(0, { ...ok, delegatesInFlight: null })).toBe("clean");
+    expect(outcome(0, { ...ok, delegatesInFlight: null })).toBe("unknown");
     expect(outcome(0, ok)).toBe("clean");
   });
 });
