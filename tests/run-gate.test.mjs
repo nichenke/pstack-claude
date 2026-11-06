@@ -391,7 +391,7 @@ describe("run-gate and an agent waiting on its own background work", () => {
       sidechain(dir, A, []);
       expect(gate(dir, interim, listed(["b1"]))).toBe(2);
       sidechain(dir, A, [
-        bashResult("Started background command b1", { isSidechain: true }),
+        bashResult("Command running in background as task b1", { isSidechain: true }),
         JSON.stringify({ type: "user", isSidechain: true, toolUseResult: { shellId: "b1" } }),
         "{not json",
       ]);
@@ -400,11 +400,17 @@ describe("run-gate and an agent waiting on its own background work", () => {
 
   test("structured shell and Monitor launch results on a sidechain count; a plain taskId result does not", () =>
     withDir((dir) => {
-      const other = JSON.stringify({ type: "user", isSidechain: true, toolUseResult: { success: true, taskId: "b3" } });
-      sidechain(dir, A, [asSidechain("bash-launch", "b1"), asSidechain("monitor-launch", "b2"), other]);
+      const result = (toolUseResult) => JSON.stringify({ type: "user", isSidechain: true, toolUseResult });
+      sidechain(dir, A, [
+        asSidechain("bash-launch", "b1"),
+        asSidechain("monitor-launch", "b2"),
+        result({ success: true, taskId: "b3" }),
+        result({ taskId: "b4", persistent: "false" }),
+      ]);
       expect(gate(dir, interim, listed(["b1"]))).toBe(0);
       expect(gate(dir, interim, listed(["b2", "monitor"]))).toBe(0);
       expect(gate(dir, interim, listed(["b3"]))).toBe(2);
+      expect(gate(dir, interim, listed(["b4"]))).toBe(2);
     }));
 
   test("the agent stays waiting until it notifies again", () =>
