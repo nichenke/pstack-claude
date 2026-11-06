@@ -2,12 +2,10 @@
 // Stop hook: blocks the main session's first stop when the latest todolist that open-run reported
 // with this session's id in its header still has a step not checked off or marked skip:, n/a: or
 // BLOCKED:. A second stop goes through. So does a stop while `background_tasks` lists a live
-// subagent or workflow, or a live task launched by an agent waiting on its own background work, as
-// that agent's transcript at <session>/subagents/agent-<id>.jsonl records; either wakes the session
-// again when it ends. Without `background_tasks`, a launched agent not yet notified lets the stop
-// through and a waiting one does not. An agent is waiting when its completion notice's summary ends
-// with WAITING, which Claude Code 2.1.296-2.1.302 sends and 2.1.318 does not. A sidechain it cannot
-// read, or a launch in a shape it does not recognise, leaves the gate holding.
+// subagent or workflow, or a live task launched by an agent waiting on its own background work;
+// either wakes the session again when it ends. Without `background_tasks`, a launched agent not yet
+// notified lets the stop through and a waiting one does not. A sidechain it cannot read, or a launch
+// in a shape it does not recognise, leaves the gate holding.
 // On Codex the transcript is the thread's rollout, and the lists come from its CommandExecution
 // items. Codex 0.165 gives the hook no background-work signal, so there the gate holds while a
 // delegate runs.
