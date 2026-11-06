@@ -2,10 +2,12 @@
 // Stop hook: blocks the main session's first stop when the latest todolist that open-run reported
 // with this session's id in its header still has a step not checked off or marked skip:, n/a: or
 // BLOCKED:. A second stop goes through. So does a stop while `background_tasks` lists a live
-// subagent or workflow, or a live task launched by an agent waiting on its own background work;
-// either wakes the session again when it ends. Without `background_tasks`, a launched agent not yet
-// notified lets the stop through and a waiting one does not. A sidechain it cannot read, or a launch
-// in a shape it does not recognise, leaves the gate holding.
+// subagent or workflow, which wakes the session when it ends, or a live task launched by an agent
+// waiting on its own background work, whose end can resume that agent and so notify the session.
+// Claude Code leaves a waiting agent out of `background_tasks`, so its tasks are read from its
+// sidechain transcript. Without `background_tasks`, a launched agent not yet notified lets the stop
+// through and a waiting one does not. A sidechain it cannot read, or a launch in a shape it does not
+// recognise, leaves the gate holding.
 // On Codex the transcript is the thread's rollout, and the lists come from its CommandExecution
 // items. Codex 0.165 gives the hook no background-work signal, so there the gate holds while a
 // delegate runs.
@@ -13,16 +15,16 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { OPENED, ownedList } from "../skills/poteto-mode/scripts/run-list.mjs";
+import { isWaitingSummary, OPENED, ownedList } from "../skills/poteto-mode/scripts/run-list.mjs";
 
 const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mjs", import.meta.url));
 
 const WAKES = new Set(["subagent", "workflow"]);
 const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
 const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"/;
-const SHELL = /Command running in background with ID: ([^\s.]+)\./g;
-const SHELL_RELEVANT = /Command running in background|backgroundTaskId|"persistent"/;
-const WAITING = " is waiting on its own background work";
+// The harness's own launch results, matched at the start so a line the agent read elsewhere is not its launch.
+const LAUNCH = /^(?:Command running in background with ID: ([^\s.]+)\.|Monitor started \(task ([^\s,)]+),)/;
+const SHELL_RELEVANT = /Command running in background|Monitor started|backgroundTaskId|"persistent"/;
 
 function texts(content) {
 	if (typeof content === "string") return [content];
@@ -62,8 +64,10 @@ function notified(entry) {
 		for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
 			const id = body.match(/<task-id>([^<]+)<\/task-id>/)?.[1];
 			const status = body.match(/<status>([^<]+)<\/status>/)?.[1];
-			const summary = body.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] ?? "";
-			const waiting = status === "completed" && summary.trim().replace(/\.$/, "").endsWith(WAITING);
+			const result = body.indexOf("<result>");
+			const own = body.indexOf("<summary>");
+			const summary = own !== -1 && (result === -1 || own < result) ? (body.slice(own).match(/^<summary>([\s\S]*?)<\/summary>/)?.[1] ?? "") : "";
+			const waiting = status === "completed" && isWaitingSummary(summary);
 			if (id && ENDED.has(status)) ids.push({ id, waiting });
 		}
 	return ids;
@@ -92,9 +96,8 @@ function readTranscript(lines) {
 	return { opened, running: running.size - waiting.length, waiting };
 }
 
-function launchedBy(agents) {
+function launchedBy(agents, sessionDir) {
 	const own = new Set();
-	const sessionDir = input.transcript_path.replace(/\.jsonl$/, "");
 	for (const agent of agents) {
 		let lines;
 		try {
@@ -114,7 +117,10 @@ function launchedBy(agents) {
 			const result = toolResult(entry);
 			if (typeof result?.backgroundTaskId === "string") own.add(result.backgroundTaskId);
 			else if (typeof result?.persistent === "boolean" && typeof result.taskId === "string") own.add(result.taskId);
-			for (const text of resultTexts(entry)) for (const [, id] of text.matchAll(SHELL)) own.add(id);
+			for (const text of resultTexts(entry)) {
+				const [, shell, monitor] = text.match(LAUNCH) ?? [];
+				if (shell ?? monitor) own.add(shell ?? monitor);
+			}
 		}
 	}
 	return own;
@@ -158,8 +164,13 @@ const check = spawnSync(process.execPath, [openRun, "--check", todo], { encoding
 if (check.status !== 1) process.exit(0);
 
 const live = Array.isArray(input.background_tasks) ? input.background_tasks.filter((task) => !ENDED.has(task?.status)) : null;
-const own = live ? launchedBy(transcript.waiting) : null;
-const busy = live ? live.some((task) => WAKES.has(task?.type) || own.has(task?.id)) : transcript.running > 0;
+const ownedBy = (tasks) => {
+	const own = launchedBy(transcript.waiting, input.transcript_path.replace(/\.jsonl$/, ""));
+	return tasks.some((task) => own.has(task?.id));
+};
+const busy = live
+	? live.some((task) => WAKES.has(task?.type)) || (live.length > 0 && transcript.waiting.length > 0 && ownedBy(live))
+	: transcript.running > 0;
 if (busy) process.exit(0);
 
 process.stderr.write(
