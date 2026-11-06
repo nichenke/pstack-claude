@@ -143,6 +143,26 @@ describe("Codex delegates", () => {
     expect(scoreCodex([started, done], [spawn], [finished, grandchild]).delegatesInFlight).toBe(1);
   });
 
+  test("code-mode spawns beyond the delegate rollouts found leave the in-flight count unknown", () => {
+    const code = (input) => ({ type: "response_item", payload: { type: "custom_tool_call", name: "exec", input } });
+    const finished = [meta(THREAD), task("task_started"), task("task_complete")];
+    const three = code("await Promise.all([1,2,3].map(i => tools.spawn_agent({ task: i })))");
+    const s = scoreCodex([started, done], [three], [finished]);
+    expect(s.delegatesInFlight).toBeNull();
+    const mixed = scoreCodex([started, done], [spawn, code("await tools.spawn_agent({ task: 'b' })")], [finished]);
+    expect(mixed.delegatesInFlight).toBeNull();
+  });
+
+  test("a spawn_agent call written inside a string another tool receives is not a spawn", () => {
+    const patch = { type: "response_item", payload: { type: "custom_tool_call", name: "exec", input: "text(await tools.apply_patch('+ call spawn_agent( twice'))" } };
+    const s = scoreCodex([started, done], [patch], []);
+    expect([s.delegates, s.delegatesInFlight]).toEqual([0, 0]);
+    const inTemplate = { type: "response_item", payload: { type: "custom_tool_call", name: "exec", input: "text(`x ${'spawn_agent('} // tools.spawn_agent( ${1}`) /* tools.spawn_agent( */" } };
+    expect(scoreCodex([started, done], [inTemplate], []).delegates).toBe(0);
+    const aliased = { type: "response_item", payload: { type: "custom_tool_call", name: "exec", input: "const { spawn_agent } = tools; await spawn_agent({ task: 'a' })" } };
+    expect(scoreCodex([started, done], [aliased], []).delegatesInFlight).toBeNull();
+  });
+
   test("a gate skill or command a delegate ran counts, from its rollout's CommandExecution items", () => {
     const ran = (exit_code, ...command) => {
       const name = command.at(-1).match(/skills\/([a-z-]+)\/SKILL/)?.[1];
