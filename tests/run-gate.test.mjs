@@ -356,6 +356,14 @@ describe("run-gate and an agent waiting on its own background work", () => {
       expect(gate(dir, interim, listed(["b9fhaii20"]))).toBe(0);
     }));
 
+  test("only a tool result that starts with a launch line counts, so one the agent read in a log or transcript does not", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [arrayResult("session.jsonl:7: Command running in background with ID: b9fhaii20. Output is being written to: /x")]);
+      expect(gate(dir, interim, listed(["b9fhaii20"]))).toBe(2);
+      sidechain(dir, A, [arrayResult("Monitor started (task bx86nb4ap, expires in 30m unless the source ends first)")]);
+      expect(gate(dir, interim, listed(["bx86nb4ap", "monitor"]))).toBe(0);
+    }));
+
   test("a live shell another agent launched holds the stop, unless that agent is waiting too", () =>
     withDir((dir) => {
       sidechain(dir, A, [shellLaunch("b2")]);
@@ -456,6 +464,8 @@ describe("run-gate and an agent waiting on its own background work", () => {
       expect(
         gate(dir, [launch, tagged('Agent \\"fix <Button>\\" finished', `\\n<result><summary>${waitingTagged}</summary></result>`)], shell),
       ).toBe(2);
+      const headless = record("notification-user", A).replace("<summary>redacted</summary>", `\\n<result><summary>${waitingTagged}</summary></result>`);
+      expect(gate(dir, [launch, headless], shell)).toBe(2);
     }));
 });
 

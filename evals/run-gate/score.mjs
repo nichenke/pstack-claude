@@ -7,8 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { OPENED, ownedList, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
-import { DELEGATE, ENDED, openRunPlaybook, taskCounts, TODO_REDIRECT, WAITING } from "./score-common.mjs";
+import { isWaitingSummary, OPENED, ownedList, RESOLVED, RUN_FILE, TODO_FILE, trailBeside } from "../../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { DELEGATE, ENDED, openRunPlaybook, taskCounts, TODO_REDIRECT } from "./score-common.mjs";
 import { childRollouts, scoreCodex } from "./score-codex.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -77,7 +77,7 @@ export function scoreStream(events) {
       launches++;
     }
     if (event.type === "system" && event.subtype === "task_notification" && ENDED.has(event.status)) {
-      if (!(event.status === "completed" && String(event.summary ?? "").trim().replace(/\.$/, "").endsWith(WAITING))) launched.delete(event.task_id);
+      if (!(event.status === "completed" && isWaitingSummary(event.summary))) launched.delete(event.task_id);
     }
     if (event.type === "result") {
       result = { ok: !event.is_error, turns: event.num_turns, ms: event.duration_ms, usd: event.total_cost_usd };
