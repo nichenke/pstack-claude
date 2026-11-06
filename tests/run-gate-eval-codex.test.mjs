@@ -49,6 +49,8 @@ describe("scoreCodex", () => {
     const printed = "---\nname: no-comments\n---\n---\nname: deslop\n---\n---\nname: tdd\n---\n";
     const s = scoreCodex([started, exec(`cat ${ROOT}/skills/{no-comments,deslop}/SKILL.md | head; cat ${ROOT}/skills/tdd/SKILL.md`, printed), done]);
     expect(s.skills).toEqual(["no-comments", "deslop", "tdd"]);
+    const numbered = scoreCodex([started, exec(`nl -ba ${ROOT}/skills/deslop/SKILL.md`, "     1\t---\r\n     2\tname: deslop\r\n"), done]);
+    expect(numbered.skills).toEqual(["deslop"]);
   });
 
   test("the native list is the last todo_list state, with a skip reason in a step's text", () => {
@@ -124,9 +126,19 @@ describe("Codex delegates", () => {
     expect(scoreCodex([started, done]).delegatesInFlight).toBe(0);
   });
 
-  test("more spawns than delegate rollouts found leaves the in-flight count unknown", () => {
+  test("a code-mode spawn counts as at least one delegate, and with no rollout found leaves in-flight unknown", () => {
+    const codeMode = { type: "response_item", payload: { type: "custom_tool_call", name: "exec", input: "for (const t of ts) await tools.spawn_agent({ task: t })" } };
+    const none = scoreCodex([started, done], [codeMode], []);
+    expect([none.delegates, none.delegatesInFlight]).toEqual([1, null]);
+    const found = [meta(THREAD), task("task_started"), task("task_complete")];
+    const one = scoreCodex([started, done], [codeMode], [found, found, found]);
+    expect([one.delegates, one.delegatesInFlight]).toEqual([3, 0]);
+  });
+
+  test("more spawns than delegate rollouts found leaves the in-flight count unknown, and the spawns still count", () => {
     const finished = [meta(THREAD), task("task_started"), task("task_complete")];
-    expect(scoreCodex([started, done], [spawn, spawn], [finished]).delegatesInFlight).toBe(null);
+    const short = scoreCodex([started, done], [spawn, spawn], [finished]);
+    expect([short.delegates, short.delegatesInFlight]).toEqual([2, null]);
     const grandchild = [meta("c-x"), task("task_started")];
     expect(scoreCodex([started, done], [spawn], [finished, grandchild]).delegatesInFlight).toBe(1);
   });

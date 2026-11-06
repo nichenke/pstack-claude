@@ -36,11 +36,11 @@ export function loadScores(batch) {
     .map((file) => JSON.parse(fs.readFileSync(file, "utf8")));
 }
 
-/** Hits over the runs where `pick` is known; a pick that returns null leaves the run out and is counted as unknown. */
+/** Hits over the runs where `pick` answers; one that returns null or undefined leaves the run out, counted as unknown. */
 export const rate = (rows, pick) => {
-  const known = rows.filter((s) => pick(s) !== null);
-  const unknown = rows.length - known.length;
-  return `${known.filter(pick).length}/${known.length}${unknown ? ` (${unknown} unknown)` : ""}`;
+  const answered = rows.filter((s) => pick(s) != null);
+  const unknown = rows.length - answered.length;
+  return `${answered.filter(pick).length}/${answered.length}${unknown ? ` (${unknown} unknown)` : ""}`;
 };
 const known = (value, test) => (value === null || value === undefined ? null : test(value));
 const mean = (rows, pick) => {

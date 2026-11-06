@@ -194,6 +194,10 @@ describe("run-one.sh", () => {
     expect(scoreOf(b, "codex", "native")).toMatchObject({ outcome: "delegate-in-flight", delegates: 1, delegatesInFlight: 1 });
     expect(readdirSync(join(run, "children"))).toEqual(["rollout-x-ch1.jsonl"]);
     expect(tmpLeft(b)).toEqual([]);
+    rmSync(join(b.home, "sessions"), { recursive: true });
+    expect(spawnSync("node", [join(evalDir, "score.mjs"), run], { encoding: "utf8" }).status).toBe(0);
+    expect(readdirSync(join(run, "children"))).toEqual(["rollout-x-ch1.jsonl"]);
+    expect(scoreOf(b, "codex", "native")).toMatchObject({ outcome: "delegate-in-flight", delegatesInFlight: 1 });
   });
 
   test("scores a native claude run's gates and fidelity from its task list", () => {

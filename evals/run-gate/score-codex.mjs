@@ -12,7 +12,7 @@ const HOOK_TRUST_WARNING = "`--dangerously-bypass-hook-trust` is enabled. Enable
 const skillReads = (command, output) =>
   [...command.matchAll(SKILL_READ)]
     .flatMap(([, name, names]) => (name ? [name] : names.split(",")))
-    .filter((name) => new RegExp(`^name: ${name}$`, "m").test(output));
+    .filter((name) => new RegExp(`^\\s*(?:\\d+\\s+)?name: ${name}\\r?$`, "m").test(output));
 
 /**
  * `events` are the exec stream's lines, which carry only the main thread's items: a list opened, an
@@ -23,9 +23,9 @@ const skillReads = (command, output) =>
  * `children` are the rollouts of the delegates it spawned, each a list of parsed lines. Their
  * CommandExecution items add skills and commands, as a Claude delegate's do, but never a list or an
  * edit. One whose last task event is a start was still running when the run ended (README
- * § Delegates). `delegates` counts the rollouts the main thread spawned. `delegatesInFlight` is null
- * when the rollout records more direct `spawn_agent` calls than that; a code-mode spawn is JavaScript
- * the scorer cannot count, so its rollout is the only record of it.
+ * § Delegates). `delegates` is the most of the direct `spawn_agent` calls, the spawned rollouts found,
+ * and one for any code-mode `spawn_agent(`, whose JavaScript the scorer cannot count. `delegatesInFlight`
+ * is null when the calls outnumber the rollouts, or code mode spawned and no rollout was found.
  * A skill counts as run when a command printed its SKILL.md, since Codex has no skill tool.
  */
 export function scoreCodex(events, rollout = [], children = []) {
@@ -106,6 +106,7 @@ export function scoreCodex(events, rollout = [], children = []) {
 
   let gateBlocks = 0;
   let spawns = 0;
+  let codeSpawns = false;
   let taskTools = false;
   for (const entry of rollout ?? []) {
     const payload = entry?.payload;
@@ -113,6 +114,7 @@ export function scoreCodex(events, rollout = [], children = []) {
       if ((payload.item.fragments ?? []).some((part) => String(part?.text).includes("still has open steps"))) gateBlocks++;
     }
     if (entry?.type === "response_item" && payload?.type === "function_call" && payload.name === "spawn_agent") spawns++;
+    if (entry?.type === "response_item" && payload?.type === "custom_tool_call" && /\bspawn_agent\s*\(/.test(String(payload.input ?? ""))) codeSpawns = true;
     if (entry?.type === "response_item" && payload?.type === "additional_tools" && /\bupdate_plan\(/.test(JSON.stringify(payload.tools))) {
       taskTools = true;
     }
@@ -134,8 +136,8 @@ export function scoreCodex(events, rollout = [], children = []) {
     taskTools: rollout ? taskTools || todos !== null : null,
     taskList: taskCounts(native),
     native: native.length ? native : null,
-    delegatesInFlight: !rollout || spawns > direct ? null : children.filter(running).length,
-    delegates: rollout ? direct : null,
+    delegatesInFlight: !rollout || spawns > direct || (codeSpawns && !direct) ? null : children.filter(running).length,
+    delegates: rollout ? Math.max(spawns, direct, codeSpawns ? 1 : 0) : null,
     warnings,
     skills,
     commands,

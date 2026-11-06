@@ -15,7 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const openRun = path.resolve(here, "../../plugins/pstack/skills/poteto-mode/scripts/open-run.mjs");
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 /** Bumped whenever a score.json field changes meaning, so a report can refuse to mix scorers. */
-export const SCORER = 2;
+export const SCORER = 3;
 
 function resultText(block) {
   if (typeof block.content === "string") return block.content;
@@ -272,9 +272,9 @@ export function fidelity(steps, items) {
   return { steps: steps.length, matched: steps.filter((step) => texts.some((text) => keeps(text, step))).length };
 }
 
-export function outcome(exit, s) {
-  // timeout exits 124 on its own signal, and 137 when -k had to follow with SIGKILL.
-  if (exit === 124 || exit === 137) return "timeout";
+export function outcome(exit, s, capped = false) {
+  // timeout exits 124 on its own signal, and 137 when -k had to follow with SIGKILL; a 137 before the cap is some other kill.
+  if (exit === 124 || (exit === 137 && capped)) return "timeout";
   if (exit !== 0 || !s.result.ok) return "error";
   if (s.delegatesInFlight === null) return "unknown";
   if (s.delegatesInFlight > 0) return "delegate-in-flight";
@@ -331,8 +331,13 @@ function copyCodexChildren(runDir, meta, events) {
     fs.rmSync(partial, { recursive: true, force: true });
     fs.mkdirSync(partial);
     for (const file of childRollouts(path.join(meta.codexHome, "sessions"), thread)) fs.copyFileSync(file, path.join(partial, path.basename(file)));
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.renameSync(partial, dir);
+    // A rescore after the home lost sessions must not shrink what an earlier scoring captured.
+    const had = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+    const found = new Set(fs.readdirSync(partial));
+    if (had.every((file) => found.has(file))) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.renameSync(partial, dir);
+    } else fs.rmSync(partial, { recursive: true, force: true });
   }
   return fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((file) => readLines(path.join(dir, file))) : [];
 }
@@ -384,7 +389,7 @@ function scoreRun(runDir) {
     ...meta,
     runtime,
     ...exit,
-    outcome: outcome(exit.exit, s),
+    outcome: outcome(exit.exit, s, exit.seconds >= meta.capMinutes * 60),
     delegatesInFlight: s.delegatesInFlight,
     delegates: s.delegates,
     pluginOk: s.plugin === meta.plugin,
