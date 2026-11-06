@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSession, OPENED, ownedList, RUN_FILE, sessionHeader, TODO_FILE, trailBeside } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { listSession, listSessions, OPENED, ownedList, RUN_FILE, sessionHeader, TODO_FILE, trailBeside } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const opened = (text) => [...text.matchAll(OPENED)].map((m) => m[1]);
 
@@ -71,6 +71,14 @@ describe("run file names", () => {
 });
 
 describe("list ownership", () => {
+  test("listSessions reads every Session: line in the header, and ownedList accepts a list naming the session on any of them", () => {
+    const both = "# x\n\nSession: claude-1\nSession: codex-1\n\n- [ ] 1. open\nSession: late\n";
+    expect(listSessions(both)).toEqual(["claude-1", "codex-1"]);
+    expect(listSessions("- [ ] 1. open\n")).toEqual([]);
+    expect(ownedList(["/l/todo.md"], "codex-1", () => both)).toBe("/l/todo.md");
+    expect(ownedList(["/l/todo.md"], "late", () => both)).toBe(null);
+  });
+
   test("listSession reads the Session: line open-run writes, from the header block only", () => {
     const header = ["# bug-fix", "", "Steps copied from poteto-mode/playbooks/bug-fix.md.", "", sessionHeader("s-1"), ""];
     expect(listSession([...header, "- [ ] 1. open"].join("\n"))).toBe("s-1");

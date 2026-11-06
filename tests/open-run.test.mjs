@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSession, OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
+import { listSession, listSessions, OPENED } from "../plugins/pstack/skills/poteto-mode/scripts/run-list.mjs";
 
 const skills = join(import.meta.dir, "../plugins/pstack/skills");
 const mode = join(skills, "poteto-mode");
@@ -286,7 +286,7 @@ describe("open-run session marker", () => {
       }
     }));
 
-  test("marks the list with CODEX_THREAD_ID on Codex, and prefers CLAUDE_CODE_SESSION_ID when both are set", () =>
+  test("marks the list with CODEX_THREAD_ID on Codex, and with both ids when both runtimes' ids are set", () =>
     withDir((dir) => {
       const thread = "01a1ae09-c8f1-78f3-ba8c-6c7e8651b1e1";
       const codex = spawnSync("node", [script, "bug-fix", join(dir, "codex")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: thread } });
@@ -297,7 +297,14 @@ describe("open-run session marker", () => {
         env: { ...bare, CODEX_THREAD_ID: thread, CLAUDE_CODE_SESSION_ID: SESSION },
       });
       expect(both.status).toBe(0);
-      expect(listSession(readFileSync(join(dir, "both/todo.md"), "utf8"))).toBe(SESSION);
+      // A Codex session started from Claude Code inherits CLAUDE_CODE_SESSION_ID, so either id may be this run's.
+      expect(listSessions(readFileSync(join(dir, "both/todo.md"), "utf8"))).toEqual([SESSION, thread]);
+      const again = spawnSync("node", [script, "bug-fix", join(dir, "both")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: thread } });
+      expect(again.status).toBe(0);
+      expect(again.stdout).toContain("exists; left as is");
+      const other = spawnSync("node", [script, "bug-fix", join(dir, "both")], { encoding: "utf8", env: { ...bare, CODEX_THREAD_ID: "someone-else" } });
+      expect(other.status).toBe(2);
+      expect(other.stderr).toContain(`belongs to session ${SESSION}, ${thread}`);
     }));
 
   test("reruns in the session that opened the list, and with no id on either side, leave it as is", () =>

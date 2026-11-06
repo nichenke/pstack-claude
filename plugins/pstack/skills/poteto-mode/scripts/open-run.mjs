@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { listSession, RESOLVED, runFiles, sessionHeader, SLUG } from "./run-list.mjs";
+import { listSessions, RESOLVED, runFiles, sessionHeader, SLUG } from "./run-list.mjs";
 
 const mode = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const skills = path.dirname(mode);
@@ -83,9 +83,11 @@ function open(playbook, dir, slug, dryRun) {
 	const steps = figure ? phaseSteps(lines) : numberedSteps(lines);
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
-	const session = [process.env.CLAUDE_CODE_SESSION_ID, process.env.CODEX_THREAD_ID].find((id) => SLUG.test(id ?? "")) ?? null;
+	// A Codex shell started from Claude Code inherits CLAUDE_CODE_SESSION_ID, and the reverse holds too,
+	// so no order picks the right runtime: the list names every id present, and either hook owns it.
+	const sessions = [...new Set([process.env.CLAUDE_CODE_SESSION_ID, process.env.CODEX_THREAD_ID].filter((id) => SLUG.test(id ?? "")))];
 	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
-	if (session) body.push(sessionHeader(session), "");
+	if (sessions.length) body.push(...sessions.map(sessionHeader), "");
 	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
 	const unwritten = !steps.length && !shipsCode;
 	if (unwritten) body.push(`- [ ] ${name} has no numbered steps. Replace this line with the run's own steps.`);
@@ -101,9 +103,10 @@ function open(playbook, dir, slug, dryRun) {
 	const { todo, trail } = runFiles(dir, slug);
 
 	if (fs.existsSync(todo)) {
-		const owner = listSession(fs.readFileSync(todo, "utf8"));
-		if (owner !== session) {
-			const whose = owner ? `belongs to session ${owner}, not this one` : "has no Session: line, so this session did not open it";
+		const owners = listSessions(fs.readFileSync(todo, "utf8"));
+		const mine = owners.length ? owners.some((id) => sessions.includes(id)) : !sessions.length;
+		if (!mine) {
+			const whose = owners.length ? `belongs to session ${owners.join(", ")}, not this one` : "has no Session: line, so this session did not open it";
 			console.error(`open-run: ${todo} ${whose}. Pass --slug <task-slug> or choose another work dir.`);
 			process.exit(2);
 		}

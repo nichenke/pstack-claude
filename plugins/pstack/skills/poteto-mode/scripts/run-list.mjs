@@ -41,15 +41,19 @@ export const sessionHeader = (id) => `Session: ${id}`;
 
 const SESSION_LINE = new RegExp(`^Session: (${SLUG_CHARS})$`);
 
-/** The session id in a list's header, the lines above its first checkbox, or null when it has none. */
-export function listSession(text) {
+/** Every session id in a list's header, the lines above its first checkbox. */
+export function listSessions(text) {
+	const ids = [];
 	for (const line of text.split(/\r?\n/)) {
 		if (line.startsWith("- [")) break;
 		const id = line.match(SESSION_LINE)?.[1];
-		if (id) return id;
+		if (id) ids.push(id);
 	}
-	return null;
+	return ids;
 }
+
+/** The first session id in a list's header, or null when it has none. */
+export const listSession = (text) => listSessions(text)[0] ?? null;
 
 const readList = (file) => {
 	try {
@@ -61,7 +65,7 @@ const readList = (file) => {
 
 /**
  * The list a session's transcript points at: walking `opened` back from the latest path, the first
- * list whose header names `session`. A list held by another session or by none is passed over. A
+ * list whose header names `session` on any of its Session: lines. A list held by another session or by none is passed over. A
  * list that is gone ends the walk with null, so a superseded list is never revived. `read` returns
  * a list's text, or null when it cannot.
  */
@@ -69,7 +73,7 @@ export function ownedList(opened, session, read = readList) {
 	for (const file of [...opened].reverse()) {
 		const text = read(file);
 		if (text === null) return null;
-		if (session && listSession(text) === session) return file;
+		if (session && listSessions(text).includes(session)) return file;
 	}
 	return null;
 }

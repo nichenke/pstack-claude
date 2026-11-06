@@ -354,6 +354,13 @@ describe("run-gate Stop hook on a Codex rollout", () => {
       expect(runCodex(dir, [exec(opened(open))], { stop_hook_active: true }).status).toBe(0);
     }));
 
+  test("holds a list stamped with an inherited Claude Code id beside the thread's own", () =>
+    withDir((dir) => {
+      const file = join(dir, "todo.md");
+      writeFileSync(file, `Session: claude-parent\nSession: ${THREAD}\n- [ ] 1. Reproduce\n`);
+      expect(runCodex(dir, [exec(opened(file))]).status).toBe(2);
+    }));
+
   test("passes over a list another thread stamped, and a command another thread ran", () =>
     withDir((dir) => {
       const theirs = todo(dir, "todo.md", "- [ ] 1. Reproduce\n", "someone-else");
