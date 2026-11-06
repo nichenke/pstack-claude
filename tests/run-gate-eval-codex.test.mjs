@@ -23,11 +23,12 @@ describe("scoreCodex", () => {
     const s = scoreCodex([
       started,
       warning,
-      exec(`sed -n 1,200p ${ROOT}/skills/poteto-mode/SKILL.md`),
+      exec(`sed -n 1,200p ${ROOT}/skills/poteto-mode/SKILL.md`, "---\nname: poteto-mode\n---\n"),
       exec(`node ${ROOT}/skills/poteto-mode/scripts/open-run.mjs --slug fix bug-fix .audit`, "/work/r/.audit/fix.todo.md: 6 steps, 3 PR gates\n/work/r/.audit/fix.tsv: started\n"),
       edit("/work/r/.audit/fix.todo.md"),
       edit("/work/r/slugkit/__init__.py"),
-      exec(`cat ${ROOT}/skills/deslop/SKILL.md`),
+      exec(`cat ${ROOT}/skills/deslop/SKILL.md`, "---\nname: deslop\n---\n"),
+      exec(`cat ${ROOT}/skills/no-comments/SKILL.md`, "cat: no such file\n"),
       exec(`node ${ROOT}/skills/poteto-mode/scripts/open-run.mjs --check .audit/fix.todo.md`, "0 open\n"),
       done,
     ]);
@@ -45,7 +46,8 @@ describe("scoreCodex", () => {
   });
 
   test("a brace list of SKILL.md paths reads each skill in it", () => {
-    const s = scoreCodex([started, exec(`cat ${ROOT}/skills/{no-comments,deslop}/SKILL.md; cat ${ROOT}/skills/tdd/SKILL.md`), done]);
+    const printed = "---\nname: no-comments\n---\n---\nname: deslop\n---\n---\nname: tdd\n---\n";
+    const s = scoreCodex([started, exec(`cat ${ROOT}/skills/{no-comments,deslop}/SKILL.md | head; cat ${ROOT}/skills/tdd/SKILL.md`, printed), done]);
     expect(s.skills).toEqual(["no-comments", "deslop", "tdd"]);
   });
 
@@ -74,7 +76,7 @@ describe("scoreCodex", () => {
     expect(byHand.written).toBe("/work/r/todo.md");
   });
 
-  test("the rollout supplies gate blocks, delegate launches and whether update_plan was offered", () => {
+  test("the rollout supplies gate blocks and whether update_plan was offered", () => {
     const rollout = [
       { type: "response_item", payload: { type: "additional_tools", tools: [{ name: "exec", description: "declare const tools: { update_plan(args: {}) }" }] } },
       { type: "response_item", payload: { type: "custom_tool_call", name: "exec", input: "await tools.spawn_agent({task: 'a'}); await tools.spawn_agent ({task: 'b'})" } },
@@ -83,9 +85,6 @@ describe("scoreCodex", () => {
     ];
     const s = scoreCodex([started, done], rollout);
     expect(s.gateBlocks).toBe(1);
-    expect(s.delegates).toBe(2);
-    const direct = { type: "response_item", payload: { type: "function_call", name: "spawn_agent", arguments: "{}" } };
-    expect(scoreCodex([started, done], [direct, direct]).delegates).toBe(2);
     expect(s.taskTools).toBe(true);
     expect(scoreCodex([started, done], []).taskTools).toBe(false);
   });
@@ -99,9 +98,9 @@ describe("scoreCodex", () => {
     expect(scoreCodex([started]).result.ok).toBe(false);
   });
 
-  test("token usage is summed over every completed turn", () => {
-    const more = { type: "turn.completed", usage: { input_tokens: 10, output_tokens: 3 } };
-    expect(scoreCodex([started, done, more]).tokens).toEqual({ input_tokens: 110, cached_input_tokens: 50, output_tokens: 10 });
+  test("token usage is the last completed turn's, which is cumulative", () => {
+    const later = { type: "turn.completed", usage: { input_tokens: 300, output_tokens: 20 } };
+    expect(scoreCodex([started, done, later]).tokens).toEqual(later.usage);
   });
 
   test("with no rollout found, every field only the rollout can supply is unknown", () => {
@@ -133,7 +132,11 @@ describe("Codex delegates", () => {
   });
 
   test("a gate skill or command a delegate ran counts, from its rollout's CommandExecution items", () => {
-    const ran = (exit_code, ...command) => ({ type: "event_msg", payload: { type: "item_completed", item: { type: "CommandExecution", command, exit_code, aggregated_output: "" } } });
+    const ran = (exit_code, ...command) => {
+      const name = command.at(-1).match(/skills\/([a-z-]+)\/SKILL/)?.[1];
+      const aggregated_output = exit_code === 0 && name ? `---\nname: ${name}\n---\n` : "";
+      return { type: "event_msg", payload: { type: "item_completed", item: { type: "CommandExecution", command, exit_code, aggregated_output } } };
+    };
     const child = [
       meta(THREAD),
       task("task_started"),

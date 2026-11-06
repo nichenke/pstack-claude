@@ -89,6 +89,6 @@ if [[ $runtime == codex ]]; then
   if [[ -n $rollout ]]; then cp "$rollout" "$run_dir/rollout.jsonl"; else echo "run-one: no rollout for thread '$thread' in $codex_home" >&2; fi
 fi
 
-node "$here/score.mjs" "$run_dir" >/dev/null || echo "run-one: scoring $run_dir failed" >&2
-rm -r "$run_tmp"
+# The candidate's scratchpad lives in run_tmp until scoring copies its list out, so a failed score keeps it.
+if node "$here/score.mjs" "$run_dir" >/dev/null; then rm -r "$run_tmp"; else echo "run-one: scoring $run_dir failed; kept $run_tmp" >&2; fi
 echo "$task $runtime $arm $rep exit=$status"

@@ -283,6 +283,7 @@ describe("outcome", () => {
   const ok = { result: { ok: true }, delegatesInFlight: 0 };
   test("a timeout and a non-zero exit are not clean, even with a successful result line", () => {
     expect(outcome(124, ok)).toBe("timeout");
+    expect(outcome(137, ok)).toBe("timeout");
     expect(outcome(1, ok)).toBe("error");
     expect(outcome(undefined, ok)).toBe("error");
   });

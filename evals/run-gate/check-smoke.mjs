@@ -28,7 +28,6 @@ export function checkSmoke(scores) {
       if (s.scorer !== SCORER) problems.push(`${name}: scored by scorer ${s.scorer}, not ${SCORER}`);
       if (!s.pluginOk) problems.push(`${name}: the arm's plugin did not load`);
       if (s.exit !== 0 || !["clean", "delegate-in-flight"].includes(s.outcome)) problems.push(`${name}: exit ${s.exit}, outcome ${s.outcome}`);
-      if (s.stopErrors) problems.push(`${name}: ${s.stopErrors} Stop hook errors`);
       if (s.list !== kind) problems.push(`${name}: list ${s.list}, expected ${kind}`);
       if (arm === "todo-hook" && typeof s.gateHeld !== "boolean") problems.push(`${name}: gateHeld not recorded`);
     }

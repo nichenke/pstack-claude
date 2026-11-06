@@ -8,22 +8,25 @@ const SKILL_READ = /\/skills\/(?:([a-z0-9-]+)|\{([a-z0-9-]+(?:,[a-z0-9-]+)*)\})\
 const PLUGIN_ROOT = /(\/[^\s'"]*?)\/skills\/poteto-mode\//;
 // codex exec reports its own --dangerously-bypass-hook-trust warning as an error item.
 const HOOK_TRUST_WARNING = "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.";
-const skillReads = (command) => [...command.matchAll(SKILL_READ)].flatMap(([, name, names]) => (name ? [name] : names.split(",")));
-const sum = (a, b) => Object.fromEntries([...new Set([...Object.keys(a ?? {}), ...Object.keys(b)])].map((k) => [k, (a?.[k] ?? 0) + (b[k] ?? 0)]));
+// A skill counts as read when the command named its SKILL.md and printed its frontmatter name line.
+const skillReads = (command, output) =>
+  [...command.matchAll(SKILL_READ)]
+    .flatMap(([, name, names]) => (name ? [name] : names.split(",")))
+    .filter((name) => new RegExp(`^name: ${name}$`, "m").test(output));
 
 /**
  * `events` are the exec stream's lines, which carry only the main thread's items: a list opened, an
  * edit or a skill read by a delegate does not reach them. `rollout` is the thread's rollout file, or
  * null when none was found, which leaves every rollout-only field null;
  * it alone records each Stop hook block (a HookPrompt item), whether `update_plan` was offered (code
- * mode declares it inside the `exec` tool), and each `spawn_agent` call, either a direct function
- * call or JavaScript inside a code-mode `exec`.
+ * mode declares it inside the `exec` tool), and each direct `spawn_agent` function call.
  * `children` are the rollouts of the delegates it spawned, each a list of parsed lines. Their
  * CommandExecution items add skills and commands, as a Claude delegate's do, but never a list or an
  * edit. One whose last task event is a start was still running when the run ended (README
- * § Delegates); `delegatesInFlight` is null when the run spawned more delegates than rollouts were
- * found for. `delegates` counts the main thread's spawns.
- * A skill counts as run when a command that exited 0 read its SKILL.md, since Codex has no skill tool.
+ * § Delegates). `delegates` counts the rollouts the main thread spawned. `delegatesInFlight` is null
+ * when the rollout records more direct `spawn_agent` calls than that; a code-mode spawn is JavaScript
+ * the scorer cannot count, so its rollout is the only record of it.
+ * A skill counts as run when a command printed its SKILL.md, since Codex has no skill tool.
  */
 export function scoreCodex(events, rollout = [], children = []) {
   let index = 0;
@@ -49,7 +52,8 @@ export function scoreCodex(events, rollout = [], children = []) {
     if (event.type === "thread.started") session ??= event.thread_id ?? null;
     if (event.type === "turn.completed") {
       completed = true;
-      if (event.usage) tokens = sum(tokens, event.usage);
+      // Each turn.completed carries the session's cumulative usage, so the last one is the total.
+      tokens = event.usage ?? tokens;
     }
     if (event.type === "turn.failed" || event.type === "error") failed = true;
     const item = event.item;
@@ -67,7 +71,7 @@ export function scoreCodex(events, rollout = [], children = []) {
     if (item.type === "command_execution") {
       const command = String(item.command ?? "");
       commands.push(command);
-      if (item.exit_code === 0) skills.push(...skillReads(command));
+      skills.push(...skillReads(command, String(item.aggregated_output ?? "")));
       plugin ??= command.match(PLUGIN_ROOT)?.[1] ?? null;
       for (const match of String(item.aggregated_output ?? "").matchAll(OPENED)) opened.push(match[1]);
       if (/open-run\.mjs\b/.test(command) && /--check\b/.test(command)) checkRan = true;
@@ -97,27 +101,25 @@ export function scoreCodex(events, rollout = [], children = []) {
       if (ran?.type !== "CommandExecution") continue;
       const command = Array.isArray(ran.command) ? ran.command.join(" ") : String(ran.command ?? "");
       commands.push(command);
-      if (ran.exit_code === 0) skills.push(...skillReads(command));
+      skills.push(...skillReads(command, String(ran.aggregated_output ?? "")));
     }
 
   let gateBlocks = 0;
-  let delegates = 0;
+  let spawns = 0;
   let taskTools = false;
   for (const entry of rollout ?? []) {
     const payload = entry?.payload;
     if (entry?.type === "event_msg" && payload?.type === "item_completed" && payload.item?.type === "HookPrompt") {
       if ((payload.item.fragments ?? []).some((part) => String(part?.text).includes("still has open steps"))) gateBlocks++;
     }
-    if (entry?.type === "response_item" && payload?.type === "custom_tool_call") {
-      delegates += (String(payload.input ?? "").match(/\bspawn_agent\s*\(/g) ?? []).length;
-    }
-    if (entry?.type === "response_item" && payload?.type === "function_call" && payload.name === "spawn_agent") delegates++;
+    if (entry?.type === "response_item" && payload?.type === "function_call" && payload.name === "spawn_agent") spawns++;
     if (entry?.type === "response_item" && payload?.type === "additional_tools" && /\bupdate_plan\(/.test(JSON.stringify(payload.tools))) {
       taskTools = true;
     }
   }
 
   const native = (todos ?? []).map((todo) => ({ text: String(todo?.text ?? ""), note: "", done: todo?.completed === true }));
+  const direct = children.filter((child) => parent(child) === session).length;
   return {
     list: { kind: list?.kind ?? null, beforeFirstEdit: Boolean(list) && (firstEdit === null || list.at < firstEdit) },
     firstEditSeen: firstEdit !== null,
@@ -132,8 +134,8 @@ export function scoreCodex(events, rollout = [], children = []) {
     taskTools: rollout ? taskTools || todos !== null : null,
     taskList: taskCounts(native),
     native: native.length ? native : null,
-    delegatesInFlight: !rollout || delegates > children.filter((child) => parent(child) === session).length ? null : children.filter(running).length,
-    delegates: rollout ? delegates : null,
+    delegatesInFlight: !rollout || spawns > direct ? null : children.filter(running).length,
+    delegates: rollout ? direct : null,
     warnings,
     skills,
     commands,

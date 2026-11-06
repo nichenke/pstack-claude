@@ -36,7 +36,13 @@ export function loadScores(batch) {
     .map((file) => JSON.parse(fs.readFileSync(file, "utf8")));
 }
 
-const rate = (rows, pick) => `${rows.filter(pick).length}/${rows.length}`;
+/** Hits over the runs where `pick` is known; a pick that returns null leaves the run out and is counted as unknown. */
+export const rate = (rows, pick) => {
+  const known = rows.filter((s) => pick(s) !== null);
+  const unknown = rows.length - known.length;
+  return `${known.filter(pick).length}/${known.length}${unknown ? ` (${unknown} unknown)` : ""}`;
+};
+const known = (value, test) => (value === null || value === undefined ? null : test(value));
 const mean = (rows, pick) => {
   const values = rows.map(pick).filter((v) => typeof v === "number" && !Number.isNaN(v));
   return values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1) : "-";
@@ -56,7 +62,7 @@ const share = (s) => (s.fidelity ? (100 * s.fidelity.matched) / s.fidelity.steps
 const metrics = [
   ["runs finished clean", (r) => rate(r, (s) => s.outcome === "clean")],
   [`outcome ${OUTCOMES.join(" / ")}`, (r) => OUTCOMES.map((o) => r.filter((s) => s.outcome === o).length).join(" / ")],
-  ["runs ended with a delegate in flight", (r) => rate(r, (s) => s.delegatesInFlight > 0)],
+  ["runs ended with a delegate in flight", (r) => rate(r, (s) => known(s.delegatesInFlight, (n) => n > 0))],
   ["delegates launched (mean)", (r) => mean(r, (s) => s.delegates)],
   ["plugin arm loaded", (r) => rate(r, (s) => s.pluginOk)],
   ["list opened before first edit", (r) => rate(r, (s) => s.listBeforeFirstEdit)],
@@ -64,14 +70,14 @@ const metrics = [
   ["playbook steps kept verbatim (mean %)", (r) => mean(r, share)],
   ["todo.md kept", (r) => rate(r, (s) => s.todoKept)],
   ["todo.md fully resolved at the end", (r) => rate(r, (s) => s.openSteps === 0)],
-  ["task tools offered", (r) => rate(r, (s) => s.taskTools)],
+  ["task tools offered", (r) => rate(r, (s) => known(s.taskTools, Boolean))],
   ["task-tool list kept", (r) => rate(r, kept)],
   ["task-tool list fully resolved at the end", (r) => rate(r, (s) => kept(s) && s.taskList.open === 0)],
   ["task-tool steps skipped with a reason (mean)", (r) => mean(r.filter(kept), (s) => s.taskList.skipped)],
   ["every list kept fully resolved", (r) => rate(r, resolved)],
   ["playbook routed", (r) => counts(r, (s) => s.playbook)],
   ["ran --check", (r) => rate(r, (s) => s.checkRan)],
-  ["runs with a stop held by run-gate", (r) => rate(r, (s) => s.gateBlocks > 0)],
+  ["runs with a stop held by run-gate", (r) => rate(r, (s) => known(s.gateBlocks, (n) => n > 0))],
   ["stops held by run-gate (mean)", (r) => mean(r, (s) => s.gateBlocks)],
   ["decision rows (mean)", (r) => mean(r, (s) => s.decisionRows)],
   ["deslop done / skipped / claimed / missing", (r) => gates(r, "deslop")],
@@ -109,7 +115,7 @@ export function report(batch, scores = loadScores(batch)) {
       ["Held-out tests by task", (r) => rate(r, (s) => s.hiddenTests)],
       ["Minutes (mean) by task", (r) => mean(r, minutes)],
       ["Runs finished clean, by task", (r) => rate(r, (s) => s.outcome === "clean")],
-      ["Runs with a stop held by run-gate, by task", (r) => rate(r, (s) => s.gateBlocks > 0)],
+      ["Runs with a stop held by run-gate, by task", (r) => rate(r, (s) => known(s.gateBlocks, (n) => n > 0))],
       ["Every list kept fully resolved, by task", (r) => rate(r, resolved)],
     ].flatMap(([title, fn]) => [
       "",

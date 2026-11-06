@@ -49,7 +49,6 @@ export function scoreStream(events) {
   const launched = new Set();
   let launches = 0;
   let stops = 0;
-  let stopErrors = 0;
   let created = 0;
   let result = { ok: false, turns: null, ms: null, usd: null };
   let tokens = null;
@@ -66,9 +65,9 @@ export function scoreStream(events) {
     }
     if (event.type === "system" && event.subtype === "hook_response" && event.hook_event === "Stop") {
       const said = [event.output, event.stderr, event.stdout].map((text) => String(text ?? "")).join("\n");
+      // Every Stop hook reports as hook_name "Stop" with a random id, so only run-gate's block, by its message, is attributable.
       stops++;
       if (event.exit_code === 2 && said.includes("still has open steps")) gateBlocks++;
-      else if (event.exit_code !== 0 && event.exit_code !== 2) stopErrors++;
     }
     if (event.type === "system" && event.subtype === "background_tasks_changed" && Array.isArray(event.tasks)) {
       background = event.tasks.filter((task) => DELEGATE.test(String(task?.task_type ?? ""))).length;
@@ -150,7 +149,6 @@ export function scoreStream(events) {
     todoHints,
     checkRan,
     gateBlocks: stops ? gateBlocks : null,
-    stopErrors,
     playbook: playbook && path.basename(playbook, ".md"),
     playbookRef: playbook,
     taskTools,
@@ -275,7 +273,8 @@ export function fidelity(steps, items) {
 }
 
 export function outcome(exit, s) {
-  if (exit === 124) return "timeout";
+  // timeout exits 124 on its own signal, and 137 when -k had to follow with SIGKILL.
+  if (exit === 124 || exit === 137) return "timeout";
   if (exit !== 0 || !s.result.ok) return "error";
   if (s.delegatesInFlight === null) return "unknown";
   if (s.delegatesInFlight > 0) return "delegate-in-flight";
@@ -327,11 +326,12 @@ export function trailFrom(s, repo) {
 function copyCodexChildren(runDir, meta, events) {
   const dir = path.join(runDir, "children");
   const thread = events.find((e) => e.type === "thread.started")?.thread_id;
-  if (!fs.existsSync(dir) && thread && meta.codexHome) {
+  if (thread && meta.codexHome && fs.existsSync(meta.codexHome)) {
     const partial = `${dir}.partial`;
     fs.rmSync(partial, { recursive: true, force: true });
     fs.mkdirSync(partial);
     for (const file of childRollouts(path.join(meta.codexHome, "sessions"), thread)) fs.copyFileSync(file, path.join(partial, path.basename(file)));
+    fs.rmSync(dir, { recursive: true, force: true });
     fs.renameSync(partial, dir);
   }
   return fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((file) => readLines(path.join(dir, file))) : [];
@@ -394,8 +394,7 @@ function scoreRun(runDir) {
     openSteps,
     checkRan: s.checkRan,
     gateBlocks: s.gateBlocks,
-    stopErrors: s.stopErrors ?? null,
-    gateHeld: meta.arm === "todo-hook" && s.gateBlocks !== null && !s.stopErrors ? s.gateBlocks > 0 : null,
+    gateHeld: meta.arm === "todo-hook" && s.gateBlocks !== null ? s.gateBlocks > 0 : null,
     playbook: s.playbook,
     fidelity: fidelity(playbookSteps(meta.plugin, s.playbookRef), items),
     taskTools: s.taskTools,

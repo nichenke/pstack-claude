@@ -10,6 +10,7 @@ import { SCORER } from "../evals/run-gate/score.mjs";
 const score = (over) => ({
   scorer: SCORER,
   pluginOk: true,
+  delegatesInFlight: 0,
   task: "slugkit",
   runtime: "claude",
   arm: "todo",
@@ -42,6 +43,12 @@ describe("report", () => {
     expect(row(text, "runs ended with a delegate in flight")).toBe("| runs ended with a delegate in flight | 1/4 |");
   });
 
+  test("leaves a run whose answer is unknown out of a rate's denominator, and counts it", () => {
+    const text = report("b", [score({ gateBlocks: 1 }), score({ gateBlocks: 0 }), score({ gateBlocks: null }), score({ gateBlocks: null })]);
+    expect(row(text, "runs with a stop held by run-gate")).toBe("| runs with a stop held by run-gate | 1/2 (2 unknown) |");
+    expect(row(text, "runs finished clean")).toBe("| runs finished clean | 4/4 |");
+  });
+
   test("has one column per runtime and arm present, in a fixed order", () => {
     const text = report("b", [score({ runtime: "codex", arm: "native" }), score({ arm: "todo-hook" }), score({ arm: "native" })]);
     expect(text).toContain("| Metric | claude native | claude todo-hook | codex native |");
@@ -69,7 +76,6 @@ describe("checkSmoke", () => {
     runs[1].outcome = "error";
     runs[2].outcome = "unknown";
     runs[2].pluginOk = false;
-    runs[2].stopErrors = 1;
     runs[2].scorer = 1;
     runs[5].gateHeld = null;
     expect(checkSmoke(runs.filter((s) => !(s.runtime === "codex" && s.arm === "todo")))).toEqual([
@@ -78,7 +84,6 @@ describe("checkSmoke", () => {
       "claude todo-hook: scored by scorer 1, not " + SCORER,
       "claude todo-hook: the arm's plugin did not load",
       "claude todo-hook: exit 0, outcome unknown",
-      "claude todo-hook: 1 Stop hook errors",
       "codex todo: 0 runs, expected 1",
       "codex todo-hook: gateHeld not recorded",
     ]);
