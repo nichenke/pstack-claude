@@ -77,7 +77,7 @@ export function scoreStream(events) {
       launches++;
     }
     if (event.type === "system" && event.subtype === "task_notification" && ENDED.has(event.status)) {
-      if (!(event.status === "completed" && String(event.summary ?? "").endsWith(WAITING))) launched.delete(event.task_id);
+      if (!(event.status === "completed" && String(event.summary ?? "").trim().replace(/\.$/, "").endsWith(WAITING))) launched.delete(event.task_id);
     }
     if (event.type === "result") {
       result = { ok: !event.is_error, turns: event.num_turns, ms: event.duration_ms, usd: event.total_cost_usd };
