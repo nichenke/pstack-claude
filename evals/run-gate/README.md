@@ -14,9 +14,9 @@ Measures how a poteto-mode run keeps its todolist on Claude Code and on Codex, t
 
 `native-arm.mjs` rewrites the todolist paragraph and steps 2 to 4 of **Start the run**: the run prints the playbook's list with `open-run.mjs --dry-run`, creates one task per line with its text verbatim, and keeps a skip as a completed task carrying `skip: <reason>` in its description (Claude Code) or step text (Codex), since neither tool has a skip state. It names the tools and the `ToolSearch` query, because Claude Code defers them. Each runtime's task tool is switched on for this arm only: `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` and `-c tools.update_plan.enabled=true`.
 
-`codex-stop.mjs` copies the Claude Code Stop entry from `hooks/hooks.json` into the arm's `hooks/codex-hooks.json`. The shipped plugin registers no Codex Stop hook. On Codex, run-gate finds the list from the rollout's `CommandExecution` items and the `Session:` line open-run stamps from `CODEX_THREAD_ID`.
+`codex-stop.mjs` copies the Claude Code Stop entry from `hooks/hooks.json` into the arm's `hooks/codex-hooks.json`, since the shipped plugin registers no Codex Stop hook. How run-gate reads a Codex run is in the header of `plugins/pstack/hooks/run-gate.mjs`.
 
-Every build step checks its anchors before it writes and fails with the tree unchanged when the tree no longer matches. When a rewording breaks a build, update the anchor in the script that failed.
+Every build step checks its anchors before it writes and fails with the tree unchanged when the tree no longer matches. `strip-run-gate.sh` also fails after the strip if any mention of the hook survives. When a rewording breaks a build, update the anchor in the script that failed.
 
 Native task tools with a stop gate are out of scope, as is an upstream baseline arm, which two batches already measured at 2/15 lists resolved.
 
@@ -27,7 +27,7 @@ Native task tools with a stop gate are out of scope, as is an upstream baseline 
 | `claude` | `claude -p` with stream-json | `--plugin-dir`, with an installed `pstack@pstack-claude` disabled | `RUN_MINUTES`, `BUDGET_USD` |
 | `codex` | `codex exec --json`, `--sandbox workspace-write --add-dir <repo>/.git` | a Codex home per arm, which installs the arm from a local marketplace named `local` | `RUN_MINUTES` only; `codex exec` has no spend cap |
 
-A Codex home links `auth.json` and `AGENTS.md` from `CODEX_AUTH_HOME` (default `~/.codex`), and loads no other user config. A linked `auth.json` keeps a token refresh from invalidating the original. `--add-dir <repo>/.git` is there because `workspace-write` keeps `.git` read-only; without it a candidate clones the repo elsewhere to commit, and the scored repo never changes.
+A Codex home links `auth.json` and `AGENTS.md` from `CODEX_AUTH_HOME` (default `~/.codex`), and loads no other user config. `run-one.sh` says why Codex runs need `--add-dir <repo>/.git`.
 
 The Codex homes are rebuilt per batch, so no hook in them carries persisted trust, the SessionStart hook included. `run.sh` refuses a batch with Codex runs unless you set `CODEX_HOOKS=bypass`, which passes `--dangerously-bypass-hook-trust` to every Codex run. That variable is the operator's approval of the arm's hooks.
 
@@ -55,11 +55,11 @@ Point `CLAUDE_BIN` and `CODEX_BIN` at the real binaries when a terminal wrapper 
 ```sh
 evals/run-gate/run.sh --dry-run 5                     # print the settings, every job and the ceiling; start nothing
 CODEX_HOOKS=bypass evals/run-gate/run.sh --smoke      # one slugkit run per runtime and arm: 6 runs
-node evals/run-gate/check-smoke.mjs                   # check the newest batch is a complete, finished smoke
+node evals/run-gate/check-smoke.mjs                   # check the newest batch has one run per runtime and arm that exited 0 with a result
 CODEX_HOOKS=bypass evals/run-gate/run.sh 5            # every task x runtime x arm x 5 reps, shuffled
 ```
 
-`TASKS`, `RUNTIMES` and `ARMS` restrict a batch to space-separated names, and `run.sh` rejects an unknown or repeated name before it builds anything. The dry run's ceiling is the Claude runs times `BUDGET_USD`, plus the Codex runs' total wall-clock cap, since nothing caps Codex spend.
+`TASKS`, `RUNTIMES` and `ARMS` restrict a batch to space-separated names, and `run.sh` rejects an unknown or repeated name before it builds anything. The dry run prints a USD ceiling, the sum of each Claude run's budget, and separately the Codex runs' total wall-clock cap, since nothing caps Codex spend.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -84,14 +84,14 @@ Results land in `results/<timestamp>/`, which git ignores: `arms.tsv` maps arm t
 
 ## Scoring
 
-`score.mjs` reads the stream, never the candidate's own account of what it did. `score-codex.mjs` reads a Codex run's exec stream and rollout into the same shape. A list opened or an edit made by a delegate does not count for the main run, while a gate skill a delegate ran does. On Codex a skill counts as run when a command read its `SKILL.md`, since Codex has no skill tool.
+`score.mjs` reads the stream, never the candidate's own account of what it did. `score-codex.mjs` reads a Codex run's exec stream and rollouts into the same shape; its docstring says what each source supplies. A list opened or an edit made by a delegate does not count for the main run, while a gate skill or command a delegate ran does, on both runtimes.
 
-- **List.** A list open-run reports counts only when its `Session:` line names the run's own session, the rule the Stop hook uses. The native list is the main thread's `TaskCreate` tasks under their last `TaskUpdate`, or its last `TodoWrite`, or Codex's last `todo_list`. A native task is open until completed, and skipped when completed with a `skip:` or `n/a:` reason in its subject, description or step text.
-- **Verbatim fidelity**, every arm. The playbook's steps are the `- [ ]` lines the arm's own `open-run.mjs --dry-run` prints for the routed playbook. A step is kept when a list item holds each of its sentences in order, so a reason added between or after them still counts and a reworded or shortened sentence does not. A run that routed to no bundled playbook has no score.
+- **List.** A list open-run reports counts only when its `Session:` line names the run's own session, the rule the Stop hook uses. The native list is the main thread's `TaskCreate` tasks under their last `TaskUpdate`, merged with its last `TodoWrite`, or Codex's last `todo_list`. A native task is open until completed, and skipped when completed with a `skip:`, `n/a:` or `BLOCKED:` reason in its subject, description or step text.
+- **Verbatim fidelity**, every arm. The playbook's steps are the `- [ ]` lines the arm's own `open-run.mjs --dry-run` prints for the routed playbook, matched against list items by `fidelity` in `score.mjs`. A run that routed to no bundled playbook has no score.
 - **Gates.** A gate is `done` when the run did it, `skipped` when its line carries a filled-in reason, `claimed` when it is checked off but never run, else `missing`. A native list's gates are read from its tasks the same way.
-- **Outcome.** `timeout` when the cap killed the run (exit 124), `error` on any other non-zero exit or a failed or missing result, `delegate-in-flight` when the run ended with a delegate still running, else `clean`. On Claude Code a delegate is a background agent or workflow in the stream's last `background_tasks_changed` list, else a launch with no final notice; an agent waiting on its own background work counts as running, as in fork PR #2. On Codex it is a rollout whose `parent_thread_id` leads back to the run and whose last task event is a start.
+- **Outcome.** `timeout` when the cap killed the run (exit 124), `error` on any other non-zero exit or a failed or missing result, `delegate-in-flight` when the run ended with a delegate still running, else `clean`. Which delegates count as running is in the `scoreStream` and `scoreCodex` docstrings.
 - **Gate held.** `gateHeld` is whether run-gate held a stop, on the `todo-hook` arm only: a Stop hook response on Claude Code, a `HookPrompt` in the rollout on Codex.
-- **Time.** Minutes are wall-clock `seconds` from `exit.json`. `duration_ms` covers only a delegating run's last main-thread stretch.
+- **Time.** Minutes are wall-clock `seconds` from `exit.json`, for the reason `report.mjs` gives.
 
 `tests/run-gate-eval-*.test.mjs` cover the stream rules, the arm builds, the runner against stub binaries, and the report.
 
@@ -101,7 +101,7 @@ Measured on Claude Code 2.1.318 and codex-cli 0.165.0, 2026-11-05:
 
 - `claude -p` waits for a background agent: the stream shows its `task_notification`, a second `init`, and a second `result`.
 - `codex exec` exits when the main turn ends and leaves a spawned agent unfinished, with no `task_complete` in its rollout.
-- Codex gives the Stop hook no background-work signal, so on the `todo-hook` arm run-gate holds the first stop while a delegate runs. In the probe, the agent repeated the block message, the second stop went through, and the delegate was abandoned. Such a run scores `delegate-in-flight`.
+- On the `todo-hook` arm, run-gate held the first stop while a delegate ran. The agent repeated the block message, the second stop went through, and the delegate was abandoned. Such a run scores `delegate-in-flight`.
 
 ## Blinding
 

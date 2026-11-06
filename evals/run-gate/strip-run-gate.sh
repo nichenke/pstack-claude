@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Turns a fork plugin tree into the prose arm: unregisters the run-gate Stop hook and deletes the
-# SKILL.md sentence that names it. Usage: strip-run-gate.sh [--verify] <plugin-root>
-# --verify only checks that the tree still carries both, as the hook arm must.
+# Turns a fork plugin tree into an arm without the Stop hook (native, todo): unregisters the
+# run-gate Stop hook and deletes the SKILL.md sentence that names it.
+# Usage: strip-run-gate.sh [--verify] <plugin-root>
+# --verify only checks that the tree still carries both, as the todo-hook arm must.
 # Every check runs before any write, so a tree that no longer matches fails with nothing changed,
 # and the strip fails afterwards if any mention of the hook survives.
 set -euo pipefail

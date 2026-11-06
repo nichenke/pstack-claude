@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Checks smoke batches: one finished run per runtime and arm, each reporting a list of its arm's
-// kind, and each todo-hook run recording whether run-gate held a stop.
+// Checks smoke batches: one run per runtime and arm that exited 0 with a result (outcome clean or
+// delegate-in-flight), each reporting a list of its arm's kind, and each todo-hook run recording
+// whether run-gate held a stop.
 // Usage: check-smoke.mjs [batch-dir...]   (default: the newest batch under results/)
 // Prints "SMOKE-MATRIX-OK <runs>" and exits 0 only when every check passes.
 import fs from "node:fs";
@@ -23,7 +24,7 @@ export function checkSmoke(scores) {
         continue;
       }
       const [s] = runs;
-      if (s.exit !== 0) problems.push(`${name}: exit ${s.exit}, outcome ${s.outcome}`);
+      if (s.exit !== 0 || s.outcome === "error" || s.outcome === "timeout") problems.push(`${name}: exit ${s.exit}, outcome ${s.outcome}`);
       if (s.list !== kind) problems.push(`${name}: list ${s.list}, expected ${kind}`);
       if (arm === "todo-hook" && typeof s.gateHeld !== "boolean") problems.push(`${name}: gateHeld not recorded`);
     }

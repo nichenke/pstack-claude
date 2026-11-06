@@ -108,6 +108,15 @@ describe("Codex delegates", () => {
     expect(scoreCodex([started, done]).delegatesInFlight).toBe(0);
   });
 
+  test("a gate skill or command a delegate ran counts, from its rollout's CommandExecution items", () => {
+    const ran = (...command) => ({ type: "event_msg", payload: { type: "item_completed", item: { type: "CommandExecution", command, aggregated_output: "" } } });
+    const child = [task("task_started"), ran("/bin/zsh", "-lc", `cat ${ROOT}/skills/deslop/SKILL.md`), ran("/bin/zsh", "-lc", "gh pr create --fill"), task("task_complete")];
+    const s = scoreCodex([started, done], [], [child]);
+    expect(s.skills).toEqual(["deslop"]);
+    expect(s.commands).toContain("/bin/zsh -lc gh pr create --fill");
+    expect(s.list.kind).toBe(null);
+  });
+
   test("childRollouts follows parent_thread_id down from the run's thread, and skips other runs' threads", () => {
     const sessions = mkdtempSync(join(tmpdir(), "sessions-"));
     mkdirSync(join(sessions, "2026/11/05"), { recursive: true });

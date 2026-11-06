@@ -57,11 +57,11 @@ describe("checkSmoke", () => {
   test("names a missing run, a failed run, a wrong list kind and an unrecorded gate", () => {
     const runs = smoke();
     runs[0].list = "open-run";
-    runs[1].exit = 124;
+    runs[1].outcome = "error";
     delete runs[5].gateHeld;
     expect(checkSmoke(runs.filter((s) => !(s.runtime === "codex" && s.arm === "todo")))).toEqual([
       "claude native: list open-run, expected task-tool",
-      "claude todo: exit 124, outcome clean",
+      "claude todo: exit 0, outcome error",
       "codex todo: 0 runs, expected 1",
       "codex todo-hook: gateHeld not recorded",
     ]);

@@ -2,9 +2,6 @@
 # Runs one candidate: a fresh copy of a task repo, one headless session on one runtime with one
 # plugin arm, then score.mjs. Usage: run-one.sh <batch-dir> <task> <runtime> <arm> <rep>
 # The batch dir's arms.tsv maps each arm to its plugin tree and Codex home; run.sh writes it.
-# A claude run must start outside any Claude Code sandbox: the candidate starts its own Bash
-# sandbox and writes its transcript under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects, which the
-# Stop hook reads back.
 set -euo pipefail
 
 batch=${1:?batch dir} task=${2:?task} runtime=${3:?runtime} arm=${4:?arm} rep=${5:?rep}
@@ -69,8 +66,9 @@ else
   flags=()
   if [[ $arm == native ]]; then flags+=(-c tools.update_plan.enabled=true); fi
   if [[ -n $model ]]; then flags+=(-m "$model"); fi
-  # workspace-write keeps .git read-only, so without --add-dir a candidate cannot commit in its repo.
   if [[ ${CODEX_HOOKS:-} == bypass ]]; then flags+=(--dangerously-bypass-hook-trust); fi
+  # workspace-write keeps .git read-only. Without --add-dir a candidate clones the repo elsewhere to
+  # commit, and the scored repo never changes.
   env "${claude_parent[@]}" \
     CODEX_HOME="$codex_home" TMPDIR="$run_tmp" \
     timeout "$((minutes * 60))" "${CODEX_BIN:-codex}" exec --json -C "$repo" --sandbox workspace-write --add-dir "$repo/.git" \

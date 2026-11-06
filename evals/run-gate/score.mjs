@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Scores one run directory written by run-one.sh: reads its stream-json output,
-// the todolist the run kept, and the final repo, and writes score.json beside them.
+// Scores one run directory written by run-one.sh: reads its runtime's event stream (and a Codex
+// run's rollouts), the todolist the run kept, and the final repo, and writes score.json beside them.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -23,7 +23,7 @@ function resultText(block) {
 /**
  * Scores the parsed stream-json lines of one `claude -p` run.
  * Main-thread events (parent_tool_use_id null) decide when the list opened, the first edit, and
- * the native task list (TaskCreate and TaskUpdate, or the last TodoWrite); skills and shell commands
+ * the native task list (TaskCreate tasks under TaskUpdate, merged with the last TodoWrite); skills and shell commands
  * count from any thread, since a subagent can run a gate for the parent. `delegatesInFlight` counts
  * the background agents and workflows still running when the stream ended: the last
  * `background_tasks_changed` list when the stream has one, else launches with no final notice.
@@ -288,9 +288,9 @@ function playbookSteps(plugin, playbook) {
 const TRAIL = /(?:^|[\s"'=(])([^\s"'|;&<>(){}=]*decisions\.tsv)\b/g;
 
 /**
- * The trail a run kept when none sits beside its list, as a native-arm run's does: the last
- * existing decisions.tsv its commands or writes name, a relative one tried in each of the repo's
- * worktrees, which is where a candidate that works on a branch keeps it.
+ * The trail of a run with no trail beside its list, as with a native-arm run, which keeps no list
+ * file: the last existing decisions.tsv named, shell commands first and then file writes, a
+ * relative one tried in each of the repo's worktrees, where a candidate on a branch keeps it.
  */
 export function trailFrom(s, repo) {
   const named = [...s.commands.flatMap((command) => [...command.matchAll(TRAIL)].map((m) => m[1])), ...(s.trails ?? [])];

@@ -15,9 +15,10 @@ const HOOK_TRUST_WARNING = /dangerously-bypass-hook-trust/;
  * which alone records three things: each Stop hook block (a HookPrompt item), whether `update_plan`
  * was offered (code mode declares it inside the `exec` tool), and each `spawn_agent` call, which
  * code mode holds only as JavaScript source.
- * `children` are the rollouts of the delegates it spawned, each a list of parsed lines; one whose
- * last task event is a start was still running when the run ended, since `codex exec` exits when
- * the main turn does without waiting for them. `delegates` counts launches.
+ * `children` are the rollouts of the delegates it spawned, each a list of parsed lines. Their
+ * CommandExecution items add skills and commands, as a Claude delegate's do, but never a list or an
+ * edit. One whose last task event is a start was still running when the run ended (README
+ * § Delegates). `delegates` counts launches.
  * A skill counts as run when a command read its SKILL.md, since Codex has no skill tool.
  */
 export function scoreCodex(events, rollout = [], children = []) {
@@ -84,6 +85,15 @@ export function scoreCodex(events, rollout = [], children = []) {
     }
     if (kind && !list) list = { kind, at: index };
   }
+
+  for (const child of children)
+    for (const entry of child) {
+      const ran = entry?.type === "event_msg" && entry.payload?.type === "item_completed" ? entry.payload.item : null;
+      if (ran?.type !== "CommandExecution") continue;
+      const command = Array.isArray(ran.command) ? ran.command.join(" ") : String(ran.command ?? "");
+      commands.push(command);
+      for (const [, name, names] of command.matchAll(SKILL_READ)) skills.push(...(name ? [name] : names.split(",")));
+    }
 
   let gateBlocks = 0;
   let delegates = 0;
