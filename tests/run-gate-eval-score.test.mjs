@@ -250,6 +250,8 @@ describe("scoreStream", () => {
       const waiting = notice("a1", "completed", "Agent \"build\" is waiting on its own background work");
       expect(scoreStream([init, started("a1"), waiting, done]).delegatesInFlight).toBe(1);
       expect(scoreStream([init, started("a1"), waiting, notice("a1", "completed"), done]).delegatesInFlight).toBe(0);
+      const trailing = notice("a1", "completed", "Agent \"build\" is waiting on its own background work.\n");
+      expect(scoreStream([init, started("a1"), trailing, done]).delegatesInFlight).toBe(1);
     });
   });
 

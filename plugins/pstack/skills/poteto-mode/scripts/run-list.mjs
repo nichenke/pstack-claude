@@ -19,6 +19,12 @@ export const OPENED = new RegExp(
 	"gm",
 );
 
+/** The summary Claude Code gives an agent that finished its turn while its own background work still runs. */
+export const WAITING = " is waiting on its own background work";
+
+/** Whether a task notice's summary says its agent is waiting on its own background work. */
+export const isWaitingSummary = (summary) => String(summary ?? "").trim().replace(/\.$/, "").endsWith(WAITING);
+
 /** A todolist line with a `skip:`, `n/a:` or upstream's `BLOCKED:` reason that is not empty or a `<placeholder>`. */
 export const RESOLVED = /(?:\b(?:skip|n\/a)|\bBLOCKED): *(?!`?<)\S/;
 

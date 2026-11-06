@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 // Stop hook: blocks the main session's first stop when the latest todolist that open-run reported
 // with this session's id in its header still has a step not checked off or marked skip:, n/a: or
-// BLOCKED:. A second stop goes through, and so does a stop while a background agent or workflow
-// runs, since its completion wakes the session again. Background detection only ever lets a stop
-// through: with no `background_tasks` input and no launch record it recognises, the gate holds.
+// BLOCKED:. A second stop goes through. So does a stop while `background_tasks` lists a live
+// subagent or workflow, which wakes the session when it ends, or a live task launched by an agent
+// waiting on its own background work, whose end can resume that agent and so notify the session.
+// Claude Code leaves a waiting agent out of `background_tasks`, so its tasks are read from its
+// sidechain transcript. Without `background_tasks`, a launched agent not yet notified lets the stop
+// through and a waiting one does not. A sidechain it cannot read, or a launch in a shape it does not
+// recognise, leaves the gate holding.
 // On Codex the transcript is the thread's rollout, and the lists come from its CommandExecution
 // items. Codex 0.165 gives the hook no background-work signal, so there the gate holds while a
 // delegate runs.
@@ -11,16 +15,16 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { OPENED, ownedList } from "../skills/poteto-mode/scripts/run-list.mjs";
+import { isWaitingSummary, OPENED, ownedList } from "../skills/poteto-mode/scripts/run-list.mjs";
 
 const openRun = fileURLToPath(new URL("../skills/poteto-mode/scripts/open-run.mjs", import.meta.url));
 
 const WAKES = new Set(["subagent", "workflow"]);
 const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
-const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"|backgroundTaskId|"persistent"/;
-// Claude Code 2.1.302 notifies an agent whose own background work still runs as completed with this summary
-// and leaves it out of background_tasks. The same task id notifies again if the agent resumes when that work ends.
-const WAITING = " is waiting on its own background work";
+const RELEVANT = /todo\.md|async_launched|"forked"|resumedAgentId|task-notification|"task_id"/;
+// The harness's own launch results, matched at the start so a line the agent read elsewhere is not its launch.
+const LAUNCH = /^(?:Command running in background with ID: ([^\s.]+)\.|Monitor started \(task ([^\s,)]+),)/;
+const SHELL_RELEVANT = /Command running in background|Monitor started|backgroundTaskId|"persistent"/;
 
 function texts(content) {
 	if (typeof content === "string") return [content];
@@ -33,24 +37,22 @@ function resultTexts(entry) {
 	return content.filter((block) => block?.type === "tool_result").flatMap((block) => texts(block.content));
 }
 
-function launched(entry) {
+function toolResult(entry) {
 	const result = entry.toolUseResult;
-	if (entry.type !== "user" || !result || typeof result !== "object") return null;
+	return entry.type === "user" && result && typeof result === "object" ? result : null;
+}
+
+function launched(entry) {
+	const result = toolResult(entry);
+	if (!result) return null;
 	if (result.status === "async_launched") return result.agentId ?? result.taskId ?? null;
 	if (result.status === "forked" && result.background === true) return result.agentId ?? null;
 	return typeof result.resumedAgentId === "string" ? result.resumedAgentId : null;
 }
 
-function ownShell(entry) {
-	const result = entry.toolUseResult;
-	if (entry.type !== "user" || !result || typeof result !== "object") return null;
-	if (typeof result.backgroundTaskId === "string") return result.backgroundTaskId;
-	return typeof result.persistent === "boolean" && typeof result.taskId === "string" ? result.taskId : null;
-}
-
 function notified(entry) {
-	if (entry.type === "user" && typeof entry.toolUseResult?.task_id === "string")
-		return [{ id: entry.toolUseResult.task_id, waiting: false }];
+	const stopped = toolResult(entry)?.task_id;
+	if (typeof stopped === "string") return [{ id: stopped, waiting: false }];
 	const notice =
 		entry.type === "user" && entry.origin?.kind === "task-notification"
 			? entry.message?.content
@@ -62,8 +64,11 @@ function notified(entry) {
 		for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
 			const id = body.match(/<task-id>([^<]+)<\/task-id>/)?.[1];
 			const status = body.match(/<status>([^<]+)<\/status>/)?.[1];
-			const summary = body.split("<result>")[0].match(/<summary>([\s\S]*?)<\/summary>/)?.[1] ?? "";
-			if (id && ENDED.has(status)) ids.push({ id, waiting: status === "completed" && summary.endsWith(WAITING) });
+			const result = body.indexOf("<result>");
+			const own = body.indexOf("<summary>");
+			const summary = own !== -1 && (result === -1 || own < result) ? (body.slice(own).match(/^<summary>([\s\S]*?)<\/summary>/)?.[1] ?? "") : "";
+			const waiting = status === "completed" && isWaitingSummary(summary);
+			if (id && ENDED.has(status)) ids.push({ id, waiting });
 		}
 	return ids;
 }
@@ -71,7 +76,6 @@ function notified(entry) {
 function readTranscript(lines) {
 	const opened = [];
 	const running = new Map();
-	const shells = new Set();
 	for (const line of lines) {
 		if (!RELEVANT.test(line)) continue;
 		let entry;
@@ -84,13 +88,42 @@ function readTranscript(lines) {
 		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) opened.push(match[1]);
 		const id = launched(entry);
 		if (id) running.set(id, false);
-		const shell = ownShell(entry);
-		if (shell) shells.add(shell);
 		for (const notice of notified(entry))
 			if (!notice.waiting) running.delete(notice.id);
 			else if (running.has(notice.id)) running.set(notice.id, true);
 	}
-	return { opened, running: running.size, waiting: [...running.values()].includes(true), shells };
+	const waiting = [...running].filter(([, isWaiting]) => isWaiting).map(([id]) => id);
+	return { opened, running: running.size - waiting.length, waiting };
+}
+
+function launchedBy(agents, sessionDir) {
+	const own = new Set();
+	for (const agent of agents) {
+		let lines;
+		try {
+			lines = fs.readFileSync(path.join(sessionDir, "subagents", `agent-${agent}.jsonl`), "utf8").split("\n");
+		} catch {
+			continue;
+		}
+		for (const line of lines) {
+			if (!SHELL_RELEVANT.test(line)) continue;
+			let entry;
+			try {
+				entry = JSON.parse(line);
+			} catch {
+				continue;
+			}
+			if (!entry) continue;
+			const result = toolResult(entry);
+			if (typeof result?.backgroundTaskId === "string") own.add(result.backgroundTaskId);
+			else if (typeof result?.persistent === "boolean" && typeof result.taskId === "string") own.add(result.taskId);
+			for (const text of resultTexts(entry)) {
+				const [, shell, monitor] = text.match(LAUNCH) ?? [];
+				if (shell ?? monitor) own.add(shell ?? monitor);
+			}
+		}
+	}
+	return own;
 }
 
 function readRollout(lines, thread) {
@@ -108,7 +141,7 @@ function readRollout(lines, thread) {
 		if (entry.payload.thread_id !== thread || typeof item.aggregated_output !== "string") continue;
 		for (const match of item.aggregated_output.matchAll(OPENED)) opened.push(match[1]);
 	}
-	return { opened, running: 0 };
+	return { opened, running: 0, waiting: [] };
 }
 
 function isRollout(lines) {
@@ -130,12 +163,13 @@ if (!todo) process.exit(0);
 const check = spawnSync(process.execPath, [openRun, "--check", todo], { encoding: "utf8" });
 if (check.status !== 1) process.exit(0);
 
-const busy = Array.isArray(input.background_tasks)
-	? input.background_tasks.some(
-			(task) =>
-				!ENDED.has(task?.status) &&
-				(WAKES.has(task?.type) || (transcript.waiting && !transcript.shells.has(task?.id))),
-		)
+const live = Array.isArray(input.background_tasks) ? input.background_tasks.filter((task) => !ENDED.has(task?.status)) : null;
+const ownedBy = (tasks) => {
+	const own = launchedBy(transcript.waiting, input.transcript_path.replace(/\.jsonl$/, ""));
+	return tasks.some((task) => own.has(task?.id));
+};
+const busy = live
+	? live.some((task) => WAKES.has(task?.type)) || (live.length > 0 && transcript.waiting.length > 0 && ownedBy(live))
 	: transcript.running > 0;
 if (busy) process.exit(0);
 
