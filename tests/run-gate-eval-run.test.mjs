@@ -235,6 +235,21 @@ describe("run-one.sh", () => {
     }
   });
 
+  test("gives no fidelity to a run whose list it could not attribute", () => {
+    const b = batch("todo");
+    const plugin = join(import.meta.dir, "../plugins/pstack");
+    const events = [
+      { type: "system", subtype: "init", session_id: "s1", plugins: [{ name: "pstack", path: plugin }] },
+      { type: "assistant", parent_tool_use_id: null, message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: `node ${plugin}/skills/poteto-mode/scripts/open-run.mjs bug-fix /nowhere` } }] } },
+      { type: "result", is_error: false },
+    ];
+    const stream = join(b.root, "lost.jsonl");
+    writeFileSync(stream, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+    restub(b, "claude", `cat '${stream}'`);
+    expect(runOne(b, "claude", "todo").status).toBe(0);
+    expect(scoreOf(b, "claude", "todo")).toMatchObject({ list: "open-run", playbook: "bug-fix", todoKept: false, fidelity: null });
+  });
+
   test("records a timed-out run as a timeout", () => {
     const b = batch("todo");
     writeFileSync(b.env.CLAUDE_BIN, "#!/usr/bin/env bash\nexit 124\n");

@@ -401,7 +401,7 @@ function scoreRun(runDir) {
     gateBlocks: s.gateBlocks,
     gateHeld: meta.arm === "todo-hook" && s.gateBlocks !== null ? s.gateBlocks > 0 : null,
     playbook: s.playbook,
-    fidelity: fidelity(playbookSteps(meta.plugin, s.playbookRef), items),
+    fidelity: todo || s.native ? fidelity(playbookSteps(meta.plugin, s.playbookRef), items) : null,
     taskTools: s.taskTools,
     taskList: s.taskList,
     decisionRows,
