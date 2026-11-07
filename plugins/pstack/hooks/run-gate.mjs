@@ -73,18 +73,24 @@ function notified(entry) {
 	return ids;
 }
 
-function readTranscript(lines) {
-	const opened = [];
-	const running = new Map();
+function* entries(lines, relevant) {
 	for (const line of lines) {
-		if (!RELEVANT.test(line)) continue;
+		if (!relevant.test(line)) continue;
 		let entry;
 		try {
 			entry = JSON.parse(line);
 		} catch {
 			continue;
 		}
-		if (!entry || entry.isSidechain) continue;
+		if (entry) yield entry;
+	}
+}
+
+function readTranscript(lines) {
+	const opened = [];
+	const running = new Map();
+	for (const entry of entries(lines, RELEVANT)) {
+		if (entry.isSidechain) continue;
 		for (const text of resultTexts(entry)) for (const match of text.matchAll(OPENED)) opened.push(match[1]);
 		const id = launched(entry);
 		if (id) running.set(id, false);
@@ -96,8 +102,20 @@ function readTranscript(lines) {
 	return { opened, running: running.size - waiting.length, waiting };
 }
 
-function launchedBy(agents, sessionDir) {
-	const own = new Set();
+function launches(entry) {
+	const result = toolResult(entry);
+	const ids = [];
+	if (typeof result?.backgroundTaskId === "string") ids.push(result.backgroundTaskId);
+	else if (typeof result?.persistent === "boolean" && typeof result.taskId === "string") ids.push(result.taskId);
+	for (const text of resultTexts(entry)) {
+		const [, shell, monitor] = text.match(LAUNCH) ?? [];
+		if (shell ?? monitor) ids.push(shell ?? monitor);
+	}
+	return ids;
+}
+
+function launchedAny(agents, sessionDir, tasks) {
+	if (!tasks.size) return false;
 	for (const agent of agents) {
 		let lines;
 		try {
@@ -105,38 +123,15 @@ function launchedBy(agents, sessionDir) {
 		} catch {
 			continue;
 		}
-		for (const line of lines) {
-			if (!SHELL_RELEVANT.test(line)) continue;
-			let entry;
-			try {
-				entry = JSON.parse(line);
-			} catch {
-				continue;
-			}
-			if (!entry) continue;
-			const result = toolResult(entry);
-			if (typeof result?.backgroundTaskId === "string") own.add(result.backgroundTaskId);
-			else if (typeof result?.persistent === "boolean" && typeof result.taskId === "string") own.add(result.taskId);
-			for (const text of resultTexts(entry)) {
-				const [, shell, monitor] = text.match(LAUNCH) ?? [];
-				if (shell ?? monitor) own.add(shell ?? monitor);
-			}
-		}
+		for (const entry of entries(lines, SHELL_RELEVANT)) if (launches(entry).some((id) => tasks.has(id))) return true;
 	}
-	return own;
+	return false;
 }
 
 function readRollout(lines, thread) {
 	const opened = [];
-	for (const line of lines) {
-		if (!line.includes('"CommandExecution"')) continue;
-		let entry;
-		try {
-			entry = JSON.parse(line);
-		} catch {
-			continue;
-		}
-		const item = entry?.payload?.item;
+	for (const entry of entries(lines, /"CommandExecution"/)) {
+		const item = entry.payload?.item;
 		if (entry.type !== "event_msg" || entry.payload.type !== "item_completed" || item?.type !== "CommandExecution") continue;
 		if (entry.payload.thread_id !== thread || typeof item.aggregated_output !== "string") continue;
 		for (const match of item.aggregated_output.matchAll(OPENED)) opened.push(match[1]);
@@ -164,12 +159,9 @@ const check = spawnSync(process.execPath, [openRun, "--check", todo], { encoding
 if (check.status !== 1) process.exit(0);
 
 const live = Array.isArray(input.background_tasks) ? input.background_tasks.filter((task) => !ENDED.has(task?.status)) : null;
-const ownedBy = (tasks) => {
-	const own = launchedBy(transcript.waiting, input.transcript_path.replace(/\.jsonl$/, ""));
-	return tasks.some((task) => own.has(task?.id));
-};
+const sessionDir = input.transcript_path.replace(/\.jsonl$/, "");
 const busy = live
-	? live.some((task) => WAKES.has(task?.type)) || (live.length > 0 && transcript.waiting.length > 0 && ownedBy(live))
+	? live.some((task) => WAKES.has(task?.type)) || launchedAny(transcript.waiting, sessionDir, new Set(live.map((task) => task?.id)))
 	: transcript.running > 0;
 if (busy) process.exit(0);
 
