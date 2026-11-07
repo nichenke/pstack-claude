@@ -19,7 +19,12 @@ export const OPENED = new RegExp(
 	"gm",
 );
 
-/** The summary Claude Code gives an agent that finished its turn while its own background work still runs. */
+/**
+ * The summary Claude Code gives an agent that finished its turn while its own background work still
+ * runs, measured on 2.1.302 in fork PR #2 and present in the 2.1.311 to 2.1.319 binaries. That agent
+ * is left out of `background_tasks`, and its task id notifies again when it resumes after that work
+ * ends, so a waiting id is kept rather than deleted.
+ */
 export const WAITING = " is waiting on its own background work";
 
 /** Whether a task notice's summary says its agent is waiting on its own background work. */
