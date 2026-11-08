@@ -233,5 +233,19 @@
       "commandMode": "task-notification",
       "prompt": "<task-notification>\n<task-id>a0000000000000001</task-id>\n<status>completed</status>\n<summary>Agent \"redacted\" is waiting on its own background work</summary>\n<note>This agent stopped with background work of its own still running. It may resume on its own when that work completes or reports, and the same task-id notifies again if it does; the result below may be interim.</note>\n</task-notification>"
     }
+  },
+  "sidechain-bash-launch": {
+    "type": "user",
+    "isSidechain": true,
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_fixture",
+          "content": "Command running in background with ID: b0000000000000001. Output is being written to: /private/tmp/claude-501/redacted/tasks/b0000000000000001.output"
+        }
+      ]
+    }
   }
 }

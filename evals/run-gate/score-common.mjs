@@ -3,9 +3,6 @@ import { RESOLVED } from "../../plugins/pstack/skills/poteto-mode/scripts/run-li
 // A shell redirect into a *todo*.md file; `2>&1` and plain reads don't match.
 export const TODO_REDIRECT = /(?:^|[^>2&])>{1,2}\s*["']?([^\s"'|;&<>]*todo[^\s"'|;&<>]*\.md)\b/gi;
 export const ENDED = new Set(["completed", "failed", "killed", "stopped"]);
-// Claude Code 2.1.302 notifies an agent still waiting on its own background work as completed with this
-// summary; fork PR #2 teaches run-gate the same rule.
-export const WAITING = " is waiting on its own background work";
 export const DELEGATE = /agent|workflow/;
 
 export function openRunPlaybook(command) {

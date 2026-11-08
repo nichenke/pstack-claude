@@ -275,73 +275,12 @@ describe("run-gate lets a stop through while background work runs", () => {
       expect(gate(dir, [record("agent-launch", A), record("notification-pending")])).toBe(0);
     }));
 
-  test("an agent that completed while waiting on its own background work stays in flight until it notifies again", () =>
+  test("without background_tasks, an agent waiting on its own background work no longer counts as in flight", () =>
     withDir((dir) => {
       const interim = [record("agent-launch", A), record("notification-interim", A)];
-      expect(gate(dir, interim)).toBe(0);
-      expect(gate(dir, [...interim, record("notification-attachment", A)])).toBe(2);
-      expect(gate(dir, [...interim, record("notification-killed", A)])).toBe(2);
-      expect(gate(dir, [...interim, record("notification-interim", A)])).toBe(0);
-      expect(gate(dir, [...interim, record("agent-resume", A), record("notification-user", A)])).toBe(2);
-      const asUserTurn = record("notification-user", A).replace(
-        "<summary>redacted</summary>",
-        '<summary>Agent \\"x\\" is waiting on its own background work</summary>',
-      );
-      expect(gate(dir, [record("agent-launch", A), asUserTurn])).toBe(0);
-      expect(gate(dir, [...interim, record("task-stop", A)])).toBe(2);
-    }));
-
-  test("the waiting wording keeps only a launched agent in flight, and only on a completed notice", () =>
-    withDir((dir) => {
-      expect(gate(dir, [record("notification-interim", A)])).toBe(2);
-      const killedWaiting = record("notification-killed", A).replace(
-        "<summary>redacted</summary>",
-        '<summary>Agent \\"x\\" is waiting on its own background work</summary>',
-      );
-      expect(gate(dir, [record("agent-launch", A), killedWaiting])).toBe(2);
-    }));
-
-  test("a final result that quotes the interim wording still ends the agent", () =>
-    withDir((dir) => {
-      const quoted = record("notification-user", A).replace(
-        "</summary>",
-        "</summary>\\n<result>it is waiting on its own background work</result>",
-      );
-      expect(gate(dir, [record("agent-launch", A), quoted])).toBe(2);
-      const relayed = record("notification-user", A).replace(
-        "</summary>",
-        '</summary>\\n<result><summary>Agent \\"y\\" is waiting on its own background work</summary></result>',
-      );
-      expect(gate(dir, [record("agent-launch", A), relayed])).toBe(2);
-      const tagged = (summary, result = "") =>
-        record("notification-user", A).replace("<summary>redacted</summary>", `<summary>${summary}</summary>${result}`);
-      const waitingTagged = 'Agent \\"fix <Button>\\" is waiting on its own background work';
-      expect(gate(dir, [record("agent-launch", A), tagged(waitingTagged)])).toBe(0);
-      expect(
-        gate(dir, [record("agent-launch", A), tagged('Agent \\"fix <Button>\\" finished', `\\n<result><summary>${waitingTagged}</summary></result>`)]),
-      ).toBe(2);
-    }));
-
-  test("with background_tasks, a waiting agent holds the stop open only while some task is still listed", () =>
-    withDir((dir) => {
-      const interim = [record("agent-launch", A), record("notification-interim", A)];
-      const shell = { background_tasks: [{ id: "b1", type: "shell", status: "running", description: "x" }] };
-      expect(gate(dir, interim, shell)).toBe(0);
-      expect(gate(dir, interim, { background_tasks: [] })).toBe(2);
-      expect(gate(dir, [...interim, record("notification-user", A)], shell)).toBe(2);
-      expect(gate(dir, [record("agent-launch", A)], shell)).toBe(2);
-      expect(gate(dir, [...interim, record("agent-resume", A)], shell)).toBe(2);
-    }));
-
-  test("a waiting agent does not count the main session's own shells and monitors, which can outlive the work", () =>
-    withDir((dir) => {
-      const interim = [record("agent-launch", A), record("notification-interim", A)];
-      const listed = (type) => ({ background_tasks: [{ id: "b1", type, status: "running", description: "x" }] });
-      expect(gate(dir, [...interim, record("bash-launch", "b1")], listed("shell"))).toBe(2);
-      expect(gate(dir, [...interim, record("monitor-launch", "b1")], listed("monitor"))).toBe(2);
-      expect(gate(dir, [...interim, record("bash-launch", "b2")], listed("shell"))).toBe(0);
-      const otherTaskResult = JSON.stringify({ type: "user", toolUseResult: { success: true, taskId: "b1" } });
-      expect(gate(dir, [...interim, otherTaskResult], listed("shell"))).toBe(0);
+      expect(gate(dir, interim)).toBe(2);
+      expect(gate(dir, [...interim, record("agent-launch", B)])).toBe(0);
+      expect(gate(dir, [...interim, record("agent-resume", A)])).toBe(0);
     }));
 
   test("a background forked skill and a workflow count as in flight", () =>
@@ -388,6 +327,146 @@ describe("run-gate lets a stop through while background work runs", () => {
   test("stop_hook_active still lets the second stop through with an agent finished", () =>
     withDir((dir) =>
       expect(gate(dir, [record("agent-launch", A), record("notification-user", A)], { stop_hook_active: true })).toBe(0)));
+});
+
+describe("run-gate and an agent waiting on its own background work", () => {
+  const open = "- [x] 1. done\n- [ ] 2. open\n";
+  const A = "a1111111111111111";
+  const B = "a2222222222222222";
+  const gate = (dir, lines, input) => runHook(dir, [bashResult(`${todo(dir, "todo.md", open)}: 2 steps`), ...lines], input).status;
+  const interim = [record("agent-launch", A), record("notification-interim", A)];
+  const listed = (...tasks) => ({
+    background_tasks: tasks.map(([id, type = "shell", status = "running"]) => ({ id, type, status, description: "x" })),
+  });
+  const shellLaunch = (id) => record("sidechain-bash-launch", id);
+  const asSidechain = (name, id) => JSON.stringify({ ...JSON.parse(record(name, id)), isSidechain: true });
+
+  function sidechain(dir, agent, lines) {
+    const subagents = join(dir, "session", "subagents");
+    mkdirSync(subagents, { recursive: true });
+    writeFileSync(join(subagents, `agent-${agent}.jsonl`), lines.map((line) => `${line}\n`).join(""));
+  }
+
+  test("a live shell the waiting agent launched on its own sidechain lets the stop through", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b9fhaii20")]);
+      expect(gate(dir, interim, listed(["b9fhaii20"]))).toBe(0);
+      expect(gate(dir, interim, listed(["b1"], ["b9fhaii20"]))).toBe(0);
+      sidechain(dir, A, [arrayResult("Command running in background with ID: b9fhaii20. Output is being written to: /x")]);
+      expect(gate(dir, interim, listed(["b9fhaii20"]))).toBe(0);
+    }));
+
+  test("only a tool result that starts with a launch line counts, so one the agent read in a log or transcript does not", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [arrayResult("session.jsonl:7: Command running in background with ID: b9fhaii20. Output is being written to: /x")]);
+      expect(gate(dir, interim, listed(["b9fhaii20"]))).toBe(2);
+      sidechain(dir, A, [arrayResult("Monitor started (task bx86nb4ap, expires in 30m unless the source ends first)")]);
+      expect(gate(dir, interim, listed(["bx86nb4ap", "monitor"]))).toBe(0);
+    }));
+
+  test("a live shell another agent launched holds the stop, unless that agent is waiting too", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b2")]);
+      sidechain(dir, B, [shellLaunch("b1")]);
+      const finished = [record("agent-launch", B), record("notification-user", B), ...interim];
+      expect(gate(dir, finished, listed(["b1"]))).toBe(2);
+      expect(gate(dir, [...interim, record("agent-launch", B), record("notification-interim", B)], listed(["b1"]))).toBe(0);
+    }));
+
+  test("a live teammate, MCP task, or main-session shell holds the stop", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b2")]);
+      expect(gate(dir, interim, listed(["t1", "teammate"]))).toBe(2);
+      expect(gate(dir, interim, listed(["m1", "mcp"]))).toBe(2);
+      const mainShell = bashResult("Command running in background with ID: b1. Output is being written to: /x");
+      expect(gate(dir, [...interim, mainShell], listed(["b1"]))).toBe(2);
+      expect(gate(dir, [...interim, record("bash-launch", "b1")], listed(["b1"]))).toBe(2);
+    }));
+
+  test("a waiting agent whose own shell has left background_tasks holds the stop, though it never notified again", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b1")]);
+      expect(gate(dir, interim, listed(["b1", "shell", "completed"]))).toBe(2);
+      expect(gate(dir, interim, listed(["b1", "shell", "killed"]))).toBe(2);
+      expect(gate(dir, interim, { background_tasks: [] })).toBe(2);
+    }));
+
+  test("a sidechain that is missing or empty, or a launch in a shape it does not know, holds the stop", () =>
+    withDir((dir) => {
+      expect(gate(dir, interim, listed(["b1"]))).toBe(2);
+      sidechain(dir, B, [shellLaunch("b1")]);
+      expect(gate(dir, interim, listed(["b1"]))).toBe(2);
+      sidechain(dir, A, []);
+      expect(gate(dir, interim, listed(["b1"]))).toBe(2);
+      sidechain(dir, A, [
+        bashResult("Command running in background as task b1", { isSidechain: true }),
+        JSON.stringify({ type: "user", isSidechain: true, toolUseResult: { shellId: "b1" } }),
+        "{not json",
+      ]);
+      expect(gate(dir, interim, listed(["b1"]))).toBe(2);
+    }));
+
+  test("structured shell and Monitor launch results on a sidechain count; a plain taskId result does not", () =>
+    withDir((dir) => {
+      const result = (toolUseResult) => JSON.stringify({ type: "user", isSidechain: true, toolUseResult });
+      sidechain(dir, A, [
+        asSidechain("bash-launch", "b1"),
+        asSidechain("monitor-launch", "b2"),
+        result({ success: true, taskId: "b3" }),
+        result({ taskId: "b4", persistent: "false" }),
+      ]);
+      expect(gate(dir, interim, listed(["b1"]))).toBe(0);
+      expect(gate(dir, interim, listed(["b2", "monitor"]))).toBe(0);
+      expect(gate(dir, interim, listed(["b3"]))).toBe(2);
+      expect(gate(dir, interim, listed(["b4"]))).toBe(2);
+    }));
+
+  test("the agent stays waiting until it notifies again", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b1")]);
+      const shell = listed(["b1"]);
+      expect(gate(dir, [...interim, record("notification-attachment", A)], shell)).toBe(2);
+      expect(gate(dir, [...interim, record("notification-killed", A)], shell)).toBe(2);
+      expect(gate(dir, [...interim, record("task-stop", A)], shell)).toBe(2);
+      expect(gate(dir, [...interim, record("notification-interim", A)], shell)).toBe(0);
+      expect(gate(dir, [...interim, record("agent-resume", A)], shell)).toBe(2);
+      expect(gate(dir, [...interim, record("agent-resume", A), record("notification-user", A)], shell)).toBe(2);
+      expect(gate(dir, [record("agent-launch", A)], shell)).toBe(2);
+    }));
+
+  test("the waiting wording marks only a launched agent, and only on a completed notice", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b1")]);
+      const shell = listed(["b1"]);
+      expect(gate(dir, [record("notification-interim", A)], shell)).toBe(2);
+      const killedWaiting = record("notification-killed", A).replace(
+        "<summary>redacted</summary>",
+        '<summary>Agent \\"x\\" is waiting on its own background work</summary>',
+      );
+      expect(gate(dir, [record("agent-launch", A), killedWaiting], shell)).toBe(2);
+    }));
+
+  test("only the notice's first summary is read, trimmed and less one trailing period", () =>
+    withDir((dir) => {
+      sidechain(dir, A, [shellLaunch("b1")]);
+      const shell = listed(["b1"]);
+      const launch = record("agent-launch", A);
+      const tagged = (summary, result = "") =>
+        record("notification-user", A).replace("<summary>redacted</summary>", `<summary>${summary}</summary>${result}`);
+      expect(gate(dir, [launch, tagged('Agent \\"x\\" is waiting on its own background work')], shell)).toBe(0);
+      expect(gate(dir, [launch, tagged('Agent \\"show <result> tags\\" is waiting on its own background work')], shell)).toBe(0);
+      expect(gate(dir, [launch, tagged('Agent \\"x\\" is waiting on its own background work. \\n ')], shell)).toBe(0);
+      expect(gate(dir, [launch, tagged('Agent \\"x\\" is waiting on its own background work..')], shell)).toBe(2);
+      const waitingTagged = 'Agent \\"fix <Button>\\" is waiting on its own background work';
+      expect(gate(dir, [launch, tagged(waitingTagged)], shell)).toBe(0);
+      expect(gate(dir, [launch, tagged("finished", "\\n<result>it is waiting on its own background work</result>")], shell)).toBe(2);
+      expect(gate(dir, [launch, tagged("finished", `\\n<result><summary>${waitingTagged}</summary></result>`)], shell)).toBe(2);
+      expect(
+        gate(dir, [launch, tagged('Agent \\"fix <Button>\\" finished', `\\n<result><summary>${waitingTagged}</summary></result>`)], shell),
+      ).toBe(2);
+      const headless = record("notification-user", A).replace("<summary>redacted</summary>", `\\n<result><summary>${waitingTagged}</summary></result>`);
+      expect(gate(dir, [launch, headless], shell)).toBe(2);
+    }));
 });
 
 
