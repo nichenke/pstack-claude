@@ -195,6 +195,21 @@ describe("open-run --dry-run", () => {
       expect(readdirSync(dir)).toEqual([]);
     }));
 
+  test("names an unknown option in its refusal", () => {
+    const result = run("--dry-run", "--slug", "x", "bug-fix");
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("open-run: ");
+    expect(result.stderr).toContain("--slug");
+  });
+
+  test("words the PR gate for a task that is marked completed", () => {
+    const { stdout } = run("--dry-run", "bug-fix");
+    expect(stdout).toContain(
+      "- [ ] Run **Opening a PR**, or mark this completed with `skip: <the user or harness rule that blocks it>`.",
+    );
+    expect(stdout).not.toContain("keep this line");
+  });
+
   test("exits 2 on a missing playbook argument and on an extra positional", () => {
     expect(run("--dry-run").code).toBe(2);
     const extra = run("--dry-run", "bug-fix", "extra");

@@ -230,13 +230,25 @@ const rules = [
   {
     source: "native task tools: the final check lists the tasks",
     file: "poteto-mode/SKILL.md",
-    phrase: "list the tasks (`TaskList` on Claude Code) and resolve every one that is not completed",
+    phrase: "list the tasks (`TaskList` on Claude Code, or read `todo.md`) and resolve every one that is not completed. A task left open with `BLOCKED: <reason>` stays open; name it and its reason in the reply.",
     once: true,
   },
   {
     source: "native task tools: one task per line, sub-steps and gates included",
     file: "poteto-mode/SKILL.md",
     phrase: "create one task for each `- [ ]` line it prints, in order, with the line's text verbatim as the task's subject on Claude Code or the step's text on Codex, and any indented lines under it as the task's description or appended to the step, the commit and PR gates included",
+    once: true,
+  },
+  {
+    source: "native task tools: a resumed run keeps its tasks and trail",
+    file: "poteto-mode/SKILL.md",
+    phrase: "If the session already holds this run's tasks, as after a compaction or resume, keep them rather than creating a second set.",
+    once: true,
+  },
+  {
+    source: "native task tools: the copy never overwrites a trail",
+    file: "poteto-mode/SKILL.md",
+    phrase: "Skip the copy when that file already exists, so a resumed run keeps its trail. A `<task-slug>` is letters, digits and hyphens only.",
     once: true,
   },
   {
@@ -248,7 +260,7 @@ const rules = [
   {
     source: "native task tools: skip and BLOCKED live in a per-runtime place",
     file: "poteto-mode/SKILL.md",
-    phrase: "None of these tools has a skip or blocked state. A step you drop is marked completed with `skip: <reason>`, and a blocked step stays open with `BLOCKED: <reason>`, in the task's description on Claude Code and appended to the step's text on Codex.",
+    phrase: "None of these tools has a skip or blocked state. A step you drop is marked completed with `skip: <reason>`, and a blocked step stays open with `BLOCKED: <reason>`, appended to the task's description on Claude Code and to the step's text on Codex.",
     once: true,
   },
   {

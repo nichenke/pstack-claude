@@ -12,7 +12,7 @@ const playbooks = path.join(mode, "playbooks");
 const PR_GATES = [
 	"Run `/deslop` over the diff before commit.",
 	"Run `/no-comments` before review.",
-	"Run **Opening a PR**, or keep this line with `skip: <the user or harness rule that blocks it>`.",
+	"Run **Opening a PR**, or mark this completed with `skip: <the user or harness rule that blocks it>`.",
 ];
 
 const usage = (reason) => {
@@ -97,8 +97,8 @@ function print(playbook) {
 let args;
 try {
 	args = parseArgs({ allowPositionals: true, options: { "dry-run": { type: "boolean" } } });
-} catch {
-	usage();
+} catch (error) {
+	usage(error.message);
 }
 const { values, positionals } = args;
 if (!values["dry-run"] || positionals.length !== 1) usage();

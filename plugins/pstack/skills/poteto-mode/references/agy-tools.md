@@ -18,7 +18,7 @@ The Antigravity CLI (`agy`) loads the native pstack plugin manifest, the skills,
 | Wait for a subagent result | End the turn (call no more tools). Antigravity resumes the session automatically when a subagent sends a message or finishes. |
 | Continue or steer a subagent (`SendMessage`) | `send_message` with `Recipient` set to the subagent's `conversationId` and `Message` |
 | List or stop subagents | `manage_subagents` with `Action: "list"`, `"kill"`, or `"kill_all"` and `ConversationIds` |
-| Track tasks (the todolist; `TaskCreate` / `TaskUpdate`, or `TodoWrite` on Claude Code) | Keep an uncommitted `todo.md` Markdown checklist in the work dir (or `.audit/<task-slug>.todo.md` when sessions share a checkout) |
+| Track tasks (the todolist; `TaskCreate` / `TaskUpdate`, or `TodoWrite` on Claude Code) | Keep an uncommitted `todo.md` Markdown checklist beside the decision trail: in the session scratchpad, or `.audit/<task-slug>.todo.md` when there is none |
 | Ask the human a fixed-choice question (`AskUserQuestion`) | `ask_question` with `questions` (`question`, `options`, `is_multi_select`) |
 | Schedule a self-paced re-invocation (`ScheduleWakeup`, the `loop` skill) | `schedule` with `DurationSeconds` (one-shot timer) or `CronExpression` (recurring schedule) and `Prompt` |
 | Call an MCP tool (`mcp__<server>__<tool>`) | Call the MCP tool directly as declared in the session's tool list |
