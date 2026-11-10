@@ -110,7 +110,7 @@
     },
     "plugins/pstack/skills/poteto-mode/playbooks/pause-safely.md": {
       "kind": "policy",
-      "why": "Writes the resume note to the canonical checkpoint directory and preserves artifacts the user asked to keep across the resume.",
+      "why": "Writes the resume note to the canonical checkpoint directory, copies the todolist into it because a session task list does not carry over, and preserves artifacts the user asked to keep across the resume.",
       "since": "0.9.34",
       "upstream": "not-proposed"
     },

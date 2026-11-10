@@ -230,7 +230,7 @@ const rules = [
   {
     source: "native task tools: the final check lists the tasks",
     file: "poteto-mode/SKILL.md",
-    phrase: "list the tasks and resolve every one that is not completed. On Claude Code run `TaskList`, then `TaskGet` on every task, since a dropped task lists as plain completed. With `TodoWrite` or `update_plan`, which cannot read the list back, use your latest call's list; on the fallback, read `todo.md`. A task left open with `BLOCKED: <reason>` stays open; name it and its reason in the reply.",
+    phrase: "list the tasks and resolve every one that is not completed. On Claude Code run `TaskList`, whose subjects carry each resolution. With `TodoWrite` or `update_plan`, which cannot read the list back, use your latest call's list; on the fallback, read `todo.md`. A task left open with `BLOCKED: <reason>` stays open; name it and its reason in the reply.",
     once: true,
   },
   {
@@ -252,6 +252,36 @@ const rules = [
     once: true,
   },
   {
+    source: "native task tools: a playbook task is never deleted",
+    file: "poteto-mode/SKILL.md",
+    phrase: "Never delete a playbook task, because a deleted task leaves the final check nothing to see.",
+    once: true,
+  },
+  {
+    source: "native task tools: a nested skill's todolist joins the run's list",
+    file: "poteto-mode/SKILL.md",
+    phrase: "Inside a run, a skill that says to open a todolist adds its entries to the run's list rather than starting another;",
+    once: true,
+  },
+  {
+    source: "native task tools: a delegate leaves the parent's tasks alone",
+    file: "poteto-mode/SKILL.md",
+    phrase: "A delegate never creates, updates or completes the parent's tasks.",
+    once: true,
+  },
+  {
+    source: "native task tools: work in playbook order, not list order",
+    file: "poteto-mode/SKILL.md",
+    phrase: "Work from the task list in playbook order, not list order, because a task added later lands at the end",
+    once: true,
+  },
+  {
+    source: "native task tools: a pause copies the todolist into the resume note",
+    file: "poteto-mode/playbooks/pause-safely.md",
+    phrase: "Copy the todolist into the note, each task's text with its status and any `skip:`, `n/a:` or `BLOCKED:` reason",
+    once: true,
+  },
+  {
     source: "native task tools: a failed open-run never leaves an empty list",
     file: "poteto-mode/SKILL.md",
     phrase: "If it exits non-zero, fix the argument from its message and rerun; never start with an empty list.",
@@ -260,7 +290,7 @@ const rules = [
   {
     source: "native task tools: skip and BLOCKED live in a per-runtime place",
     file: "poteto-mode/SKILL.md",
-    phrase: "None of these tools has a skip or blocked state. A step you drop is marked completed with `skip: <reason>`, one that does not apply with `n/a: <reason>`, and a blocked step stays open with `BLOCKED: <reason>`. On Claude Code the reason goes at the end of the task's description; `TaskUpdate` replaces the description, so `TaskGet` the task first and send its text with the reason added.",
+    phrase: "None of these tools has a skip or blocked state, so a step's resolution goes at the end of its own text: the task's subject on Claude Code, where `TaskList` shows it, the item's text with `TodoWrite`, and the step's text on Codex.",
     once: true,
   },
   {
