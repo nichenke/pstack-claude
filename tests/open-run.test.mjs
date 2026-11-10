@@ -109,7 +109,7 @@ describe("open-run --dry-run", () => {
         const { code, stdout } = run("--dry-run", arg);
         const name = arg.endsWith(".md") ? "rules-only" : arg;
         expect(code).toBe(0);
-        expect(stdout).toContain("- [ ] " + name + " has no numbered steps. Replace this line with the run's own steps.\n");
+        expect(stdout).toContain("- [ ] " + name + " has no numbered steps. Write the run's own steps as tasks, then complete this one.\n");
         expect(stdout).toEndWith("nothing written: 0 steps, 1 to write\n");
         expect(stdout).not.toContain("PR gates");
       }

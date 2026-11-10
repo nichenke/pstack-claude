@@ -87,7 +87,7 @@ function print(playbook) {
 	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
 	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
 	const unwritten = !steps.length && !shipsCode;
-	if (unwritten) body.push(`- [ ] ${name} has no numbered steps. Replace this line with the run's own steps.`);
+	if (unwritten) body.push(`- [ ] ${name} has no numbered steps. Write the run's own steps as tasks, then complete this one.`);
 	if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
 	const counts = `${steps.length} steps${unwritten ? ", 1 to write" : ""}${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`;
 
