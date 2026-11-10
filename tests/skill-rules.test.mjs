@@ -4,7 +4,7 @@
 // sync, so each one is pinned here by the sentence that carries it, with the
 // issue or PR that earned it.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,12 +64,12 @@ const rules = [
   {
     source: "native task tools are the todolist",
     file: "poteto-mode/SKILL.md",
-    phrase: "The todolist is the session's own task tool: `TaskCreate` and `TaskUpdate` on Claude Code, and `update_plan` on Codex.",
+    phrase: "The todolist is the session's own task tool: `TaskCreate`, `TaskUpdate` and `TaskList` on Claude Code, or `TodoWrite` where the session has that instead, and `update_plan` on Codex.",
   },
   {
     source: "todo.md is the fallback when no task tool exists",
     file: "poteto-mode/SKILL.md",
-    phrase: "If no task-tracking tool is available, the todolist is an uncommitted `todo.md` Markdown checklist in the work dir",
+    phrase: "If no task-tracking tool is available, the todolist is an uncommitted `todo.md` Markdown checklist beside the decision trail",
   },
   {
     source: "0.9.89 harness rules outrank the skill",
@@ -84,7 +84,7 @@ const rules = [
   {
     source: "#229 parallel sessions keep separate todolists",
     file: "poteto-mode/SKILL.md",
-    phrase: "When several sessions share the checkout, name it `.audit/<task-slug>.todo.md`",
+    phrase: "`.audit/<task-slug>.todo.md` beside `.audit/<task-slug>.tsv` when there is none, so parallel sessions never write one file",
   },
   {
     source: "Start the run prints steps with --dry-run",
@@ -99,7 +99,7 @@ const rules = [
   {
     source: "#387 desktop app keeps the verbatim checklist",
     file: "poteto-mode/SKILL.md",
-    phrase: "keep this checklist as well, with the playbook steps verbatim and each `skip: <reason>` line",
+    phrase: "keep the full task list as well, with the playbook steps verbatim and each `skip: <reason>` line",
   },
   {
     source: "#58 stop before you re-delegate",
@@ -184,7 +184,7 @@ const rules = [
   {
     source: "#188 a missing reviewer blocks the gate",
     file: "poteto-mode/SKILL.md",
-    phrase: "Record `BLOCKED: independent review` in the todolist",
+    phrase: "Record `BLOCKED: independent review` on an open task in the todolist",
   },
   {
     source: "#231 reflect digest carries no verdict",
@@ -221,6 +221,48 @@ const rules = [
     file: "no-comments/SKILL.md",
     phrase: "unless the report cites a documentation page or source file that refutes the rule",
   },
+  {
+    source: "native task tools load deferred through ToolSearch",
+    file: "poteto-mode/SKILL.md",
+    phrase: "load them first with `ToolSearch` and the query `select:TaskCreate,TaskUpdate,TaskList`",
+    once: true,
+  },
+  {
+    source: "native task tools: the final check lists the tasks",
+    file: "poteto-mode/SKILL.md",
+    phrase: "list the tasks (`TaskList` on Claude Code) and resolve every one that is not completed",
+    once: true,
+  },
+  {
+    source: "native task tools: one task per line, sub-steps and gates included",
+    file: "poteto-mode/SKILL.md",
+    phrase: "create one task for each `- [ ]` line it prints, in order, with the line's text verbatim as the task's subject on Claude Code or the step's text on Codex, and any indented lines under it as the task's description or appended to the step, the commit and PR gates included",
+    once: true,
+  },
+  {
+    source: "native task tools: a failed open-run never leaves an empty list",
+    file: "poteto-mode/SKILL.md",
+    phrase: "If it exits non-zero, fix the argument from its message and rerun; never start with an empty list.",
+    once: true,
+  },
+  {
+    source: "native task tools: skip and BLOCKED live in a per-runtime place",
+    file: "poteto-mode/SKILL.md",
+    phrase: "None of these tools has a skip or blocked state. A step you drop is marked completed with `skip: <reason>`, and a blocked step stays open with `BLOCKED: <reason>`, in the task's description on Claude Code and appended to the step's text on Codex.",
+    once: true,
+  },
+  {
+    source: "native task tools: the decision trail falls back to .audit/<task-slug>.tsv",
+    file: "poteto-mode/SKILL.md",
+    phrase: "to `decisions.tsv` in the session scratchpad or, when there is none, to `.audit/<task-slug>.tsv`, creating `.audit` first",
+    once: true,
+  },
+  {
+    source: "native task tools: the trail template path",
+    file: "poteto-mode/SKILL.md",
+    phrase: "`<this skill's base directory>/../show-me-your-work/references/decision-log-template.tsv`",
+    once: true,
+  },
 ];
 
 describe("port-local skill rules", () => {
@@ -230,9 +272,15 @@ describe("port-local skill rules", () => {
     for (const phrase of phrases) expect(phrase.length).toBeGreaterThanOrEqual(20);
   });
 
-  for (const { source, file, phrase } of rules) {
+  for (const { source, file, phrase, once } of rules) {
     test(`${file} keeps the rule from ${source}`, () => {
-      expect(readFileSync(join(skillsDir, file), "utf8")).toContain(phrase);
+      const text = readFileSync(join(skillsDir, file), "utf8");
+      if (once) expect(text.split(phrase).length - 1).toBe(1);
+      else expect(text).toContain(phrase);
     });
   }
+
+  test("the decision-log template the poteto-mode run copies exists", () => {
+    expect(existsSync(join(skillsDir, "show-me-your-work/references/decision-log-template.tsv"))).toBe(true);
+  });
 });
