@@ -47,7 +47,7 @@ The Live column records the end-to-end run on real Pi with `PSTACK_PI_LIVE=1` (`
 | H03 | `~/.claude` config directory | `$PI_CODING_AGENT_DIR` or `~/.pi/agent` | mapping | setup-pstack Other runtimes | n/a |
 | H04 | Override sheet plus `@` include | The extension adds the whole sheet to the system prompt, children included | extension | `a child pi gets the sheet but not the mandate` | VERIFIED |
 | H05 | `CLAUDE.md` instructions file | Pi loads `AGENTS.md` or `CLAUDE.md` per directory, plus `~/.pi/agent/AGENTS.md` | native | pi-tools.md Instructions file | n/a |
-| H06 | `.claude/settings.local.json` env for todo tools | Pi has no todo tools; the `todo.md` fallback applies | n/a | poteto-mode Platform Adaptation | n/a |
+| H06 | Claude Code task tools (`TaskCreate`, `TaskUpdate`, `TaskList`) as the todolist | Pi has no todo tools; the `todo.md` fallback applies | n/a | poteto-mode todolist paragraph | n/a |
 | F01 | `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects` transcripts | `find-transcript.mjs` reads Pi sessions and follows the active branch | script | `a Pi session's opening prompt is the first user message on the branch that ends at the last entry` | VERIFIED |
 | F07 | Own transcript as evidence | Same reader; `worktree-audit.mjs` scans Pi session roots | script | `a Pi session in a second transcripts root marks the worktree it ran in as a recent chat` | n/a |
 | F02 | `.claude/skills/` project and user skills | `.pi/skills/` or `.agents/skills/` | mapping | pi-tools.md `create-verification-skill` note | n/a |

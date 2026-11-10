@@ -15,7 +15,8 @@ const PR_GATES = [
 	"Run **Opening a PR**, or keep this line with `skip: <the user or harness rule that blocks it>`.",
 ];
 
-const usage = () => {
+const usage = (reason) => {
+	if (reason) console.error(`open-run: ${reason}`);
 	const names = fs.readdirSync(playbooks).map((f) => f.replace(/\.md$/, ""));
 	console.error("Usage: node open-run.mjs --dry-run <playbook | path/to/playbook.md>");
 	console.error(`Playbooks: figure-it-out, ${names.sort().join(", ")}`);
@@ -42,12 +43,15 @@ function outsideFences(text) {
 
 function numberedSteps(lines) {
 	const steps = [];
+	let open = false;
 	for (const line of lines) {
-		if (/^\d+\. /.test(line)) steps.push([line]);
-		else if (steps.length && /^\s+\S/.test(line)) steps.at(-1).push(line);
-		else if (steps.length && line.trim() !== "") steps.push(null);
+		if (/^\d+\. /.test(line)) {
+			steps.push([line]);
+			open = true;
+		} else if (open && /^\s+\S/.test(line)) steps.at(-1).push(line);
+		else if (line.trim() !== "") open = false;
 	}
-	return steps.filter(Boolean);
+	return steps;
 }
 
 function phaseSteps(lines) {
@@ -63,7 +67,8 @@ function print(playbook) {
 		: figure
 			? path.join(skills, "figure-it-out/SKILL.md")
 			: path.join(playbooks, `${name}.md`);
-	if (!(project || /^[a-z-]+$/.test(name)) || !fs.existsSync(source)) usage();
+	if (!(project || /^[a-z-]+$/.test(name)) || !fs.statSync(source, { throwIfNoEntry: false })?.isFile())
+		usage(project ? `no playbook file at ${source}` : `no playbook named ${playbook}`);
 
 	const text = fs.readFileSync(source, "utf8").replace(/^\uFEFF/, "");
 	const front = project ? (text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] ?? "") : "";
@@ -96,5 +101,5 @@ try {
 	usage();
 }
 const { values, positionals } = args;
-if (!values["dry-run"] || positionals.length < 1 || positionals.length > 2) usage();
+if (!values["dry-run"] || positionals.length !== 1) usage();
 print(positionals[0]);
