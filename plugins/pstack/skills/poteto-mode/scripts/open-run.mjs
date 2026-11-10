@@ -101,5 +101,6 @@ try {
 	usage(error.message);
 }
 const { values, positionals } = args;
-if (!values["dry-run"] || positionals.length !== 1) usage();
+if (!values["dry-run"]) usage("--dry-run is required");
+if (positionals.length !== 1) usage(`expected one playbook argument, got ${positionals.length}`);
 print(positionals[0]);

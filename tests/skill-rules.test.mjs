@@ -64,7 +64,7 @@ const rules = [
   {
     source: "native task tools are the todolist",
     file: "poteto-mode/SKILL.md",
-    phrase: "The todolist is the session's own task tool: `TaskCreate`, `TaskUpdate` and `TaskList` on Claude Code, or `TodoWrite` where the session has that instead, and `update_plan` on Codex.",
+    phrase: "The todolist is the session's own task tool: `TaskCreate`, `TaskUpdate`, `TaskList` and `TaskGet` on Claude Code, or `TodoWrite` where the session has that instead, and `update_plan` on Codex.",
   },
   {
     source: "todo.md is the fallback when no task tool exists",
@@ -224,31 +224,31 @@ const rules = [
   {
     source: "native task tools load deferred through ToolSearch",
     file: "poteto-mode/SKILL.md",
-    phrase: "load them first with `ToolSearch` and the query `select:TaskCreate,TaskUpdate,TaskList`",
+    phrase: "load them first with `ToolSearch` and the query `select:TaskCreate,TaskUpdate,TaskList,TaskGet`",
     once: true,
   },
   {
     source: "native task tools: the final check lists the tasks",
     file: "poteto-mode/SKILL.md",
-    phrase: "list the tasks (`TaskList` on Claude Code, or read `todo.md`) and resolve every one that is not completed. A task left open with `BLOCKED: <reason>` stays open; name it and its reason in the reply.",
+    phrase: "list the tasks (`TaskList` on Claude Code, then `TaskGet` on each open task and each one you dropped, or read `todo.md`) and resolve every one that is not completed. A task left open with `BLOCKED: <reason>` stays open; name it and its reason in the reply.",
     once: true,
   },
   {
     source: "native task tools: one task per line, sub-steps and gates included",
     file: "poteto-mode/SKILL.md",
-    phrase: "create one task for each `- [ ]` line it prints, in order, with the line's text verbatim as the task's subject on Claude Code or the step's text on Codex, and any indented lines under it as the task's description or appended to the step, the commit and PR gates included",
+    phrase: "create one task for each `- [ ]` line it prints, in order, with the line's text verbatim as the task's subject on Claude Code or the step's text on Codex, and any indented lines under it as the task's description, or appended to the item or step where there is no description field, the commit and PR gates included",
     once: true,
   },
   {
     source: "native task tools: a resumed run keeps its tasks and trail",
     file: "poteto-mode/SKILL.md",
-    phrase: "If the session already holds this run's tasks, as after a compaction or resume, keep them rather than creating a second set.",
+    phrase: "If the session already holds this run's tasks or its `todo.md`, as after a compaction or resume, keep them rather than creating a second set or rewriting the file.",
     once: true,
   },
   {
     source: "native task tools: the copy never overwrites a trail",
     file: "poteto-mode/SKILL.md",
-    phrase: "Skip the copy when that file already exists, so a resumed run keeps its trail. A `<task-slug>` is letters, digits and hyphens only.",
+    phrase: "Skip the copy when that file already exists, so a resumed run keeps its trail. A `<task-slug>` is lowercase letters, digits and hyphens only, and names this task, never one another session's `.audit` file already uses.",
     once: true,
   },
   {
@@ -260,7 +260,7 @@ const rules = [
   {
     source: "native task tools: skip and BLOCKED live in a per-runtime place",
     file: "poteto-mode/SKILL.md",
-    phrase: "None of these tools has a skip or blocked state. A step you drop is marked completed with `skip: <reason>`, and a blocked step stays open with `BLOCKED: <reason>`, appended to the task's description on Claude Code and to the step's text on Codex.",
+    phrase: "None of these tools has a skip or blocked state. A step you drop is marked completed with `skip: <reason>`, and a blocked step stays open with `BLOCKED: <reason>`, appended to the task's description on Claude Code, to the item's text with `TodoWrite`, and to the step's text on Codex. `TaskList` shows subjects and statuses only, so read a task's description, its sub-steps and any reason with `TaskGet`.",
     once: true,
   },
   {

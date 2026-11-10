@@ -188,7 +188,7 @@ Install the Claude Code skill-authoring companion with:
 
 Those authoring workflows need `plugin-dev` for their guidance; other workflows do not. Codex and GitHub Copilot use the equivalents named in their mappings: [Codex](../plugins/pstack/skills/poteto-mode/references/codex-tools.md#driver-and-bundled-skills-pstack-references) and [Copilot](../plugins/pstack/skills/poteto-mode/references/copilot-tools.md#driver-and-bundled-skills-pstack-references).
 
-Playbooks use the session's own task tool as their todolist, `TaskCreate` and `TaskUpdate` on Claude Code and `update_plan` on Codex, with `poteto-mode`'s `open-run.mjs --dry-run` printing the steps to copy. An uncommitted `todo.md` checklist is the fallback when the runtime has no task tool; see [platform adaptation](../plugins/pstack/skills/poteto-mode/SKILL.md#platform-adaptation).
+Playbooks use the session's own task tool as their todolist, `TaskCreate`, `TaskUpdate`, `TaskList` and `TaskGet` on Claude Code and `update_plan` on Codex, with `poteto-mode`'s `open-run.mjs --dry-run` printing the steps to copy. An uncommitted `todo.md` checklist is the fallback when the runtime has no task tool; see [platform adaptation](../plugins/pstack/skills/poteto-mode/SKILL.md#platform-adaptation).
 
 Use [create-verification-skill](../plugins/pstack/skills/create-verification-skill/SKILL.md) to record how the agent should run and check your project, following the [driver policy](../plugins/pstack/skills/poteto-mode/SKILL.md#non-negotiables).
 

@@ -210,6 +210,12 @@ describe("open-run --dry-run", () => {
     expect(stdout).not.toContain("keep this line");
   });
 
+  test("names what is wrong without --dry-run and with the wrong argument count", () => {
+    expect(run("bug-fix").stderr).toContain("open-run: --dry-run is required");
+    expect(run("--dry-run").stderr).toContain("open-run: expected one playbook argument, got 0");
+    expect(run("--dry-run", "bug-fix", "extra").stderr).toContain("open-run: expected one playbook argument, got 2");
+  });
+
   test("exits 2 on a missing playbook argument and on an extra positional", () => {
     expect(run("--dry-run").code).toBe(2);
     const extra = run("--dry-run", "bug-fix", "extra");
