@@ -57,14 +57,19 @@ const rules = [
     phrase: "The project `verify` skill that `/create-verification-skill` writes drives the app and is not one.",
   },
   {
-    source: "#72 task fallback keeps skipped steps",
+    source: "native task tools keep skipped steps",
     file: "poteto-mode/SKILL.md",
-    phrase: "A step you drop keeps its line with `skip: <reason>`.",
+    phrase: "A step you drop is marked completed with `skip: <reason>`",
   },
   {
-    source: "#72 task fallback is a local checklist",
+    source: "native task tools are the todolist",
     file: "poteto-mode/SKILL.md",
-    phrase: "The todolist is the uncommitted `todo.md` that **Start the run** writes.",
+    phrase: "The todolist is the session's own task tool: `TaskCreate` and `TaskUpdate` on Claude Code, and `update_plan` on Codex.",
+  },
+  {
+    source: "todo.md is the fallback when no task tool exists",
+    file: "poteto-mode/SKILL.md",
+    phrase: "If no task-tracking tool is available, the todolist is an uncommitted `todo.md` Markdown checklist in the work dir",
   },
   {
     source: "0.9.89 harness rules outrank the skill",
@@ -79,7 +84,12 @@ const rules = [
   {
     source: "#229 parallel sessions keep separate todolists",
     file: "poteto-mode/SKILL.md",
-    phrase: "several sessions may share the checkout, use `.audit` as the work dir and add `--slug <task-slug>`",
+    phrase: "When several sessions share the checkout, name it `.audit/<task-slug>.todo.md`",
+  },
+  {
+    source: "Start the run prints steps with --dry-run",
+    file: "poteto-mode/SKILL.md",
+    phrase: "scripts/open-run.mjs --dry-run <playbook>`, which writes nothing",
   },
   {
     source: "#387 desktop app plan tool is named",
