@@ -88,8 +88,6 @@ Smaller tasks proceed directly. The full skill loads when invoked, and explicit 
 
 To disable routing on runtimes that support the session hook setting, run `setup-pstack` and turn it off, or write `session hook: off` in the runtime's sheet at the path in [setup-pstack's runtime table](../plugins/pstack/skills/setup-pstack/SKILL.md#other-runtimes). In Claude Code, use `/pstack:setup-pstack`. Without the setting, routing stays on. On OMP this setting applies across profiles. On Kimi, disable the plugin to stop its routing instruction. Grok's routing hint is not controlled by the session hook setting.
 
-Only the Claude Code plugin registers a Stop hook, [`run-gate.mjs`](../plugins/pstack/hooks/run-gate.mjs). It checks the todolist that `poteto-mode`'s `open-run.mjs` wrote for the main session, `todo.md` or a shared checkout's `<task-slug>.todo.md`, and only a list whose `Session:` line names that session. While a step is neither checked off nor marked `skip:`, `n/a:` or `BLOCKED:` with a reason, it blocks the first stop and lists the open steps. A session that never ran `open-run.mjs` is untouched, a stop goes through while a background agent or workflow, or a shell or monitor that a waiting agent launched, is still running, and the second stop always goes through. `open-run.mjs` refuses a list another session opened and names that session, so pass `--slug` or choose another work dir. `session hook: off` does not disable it, since it only acts on a list the run opened.
-
 Skills-only installs and other runtimes do not include these integrations. Request `poteto-mode` explicitly, or add a standing instruction to the runtime's instruction file.
 
 ### Shared skills installation
@@ -190,7 +188,7 @@ Install the Claude Code skill-authoring companion with:
 
 Those authoring workflows need `plugin-dev` for their guidance; other workflows do not. Codex and GitHub Copilot use the equivalents named in their mappings: [Codex](../plugins/pstack/skills/poteto-mode/references/codex-tools.md#driver-and-bundled-skills-pstack-references) and [Copilot](../plugins/pstack/skills/poteto-mode/references/copilot-tools.md#driver-and-bundled-skills-pstack-references).
 
-Playbooks keep an uncommitted `todo.md` checklist that `poteto-mode`'s `open-run.mjs` writes, mirrored into the runtime's task-tracking tools when they are loaded. For Claude Code, the repository documents `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; see [platform adaptation](../plugins/pstack/skills/poteto-mode/SKILL.md#platform-adaptation).
+Playbooks use the session's own task tool as their todolist, `TaskCreate`, `TaskUpdate`, `TaskList` and `TaskGet` on Claude Code and `update_plan` on Codex, with `poteto-mode`'s `open-run.mjs --dry-run` printing the steps to copy. An uncommitted `todo.md` checklist is the fallback when the runtime has no task tool; see [platform adaptation](../plugins/pstack/skills/poteto-mode/SKILL.md#platform-adaptation).
 
 Use [create-verification-skill](../plugins/pstack/skills/create-verification-skill/SKILL.md) to record how the agent should run and check your project, following the [driver policy](../plugins/pstack/skills/poteto-mode/SKILL.md#non-negotiables).
 
