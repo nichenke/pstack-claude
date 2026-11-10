@@ -4,12 +4,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { listSessions, RESOLVED, runFiles, sessionHeader, SLUG } from "./run-list.mjs";
 
 const mode = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const skills = path.dirname(mode);
 const playbooks = path.join(mode, "playbooks");
-const trailHeader = path.join(skills, "show-me-your-work/references/decision-log-template.tsv");
 
 const PR_GATES = [
 	"Run `/deslop` over the diff before commit.",
@@ -19,9 +17,7 @@ const PR_GATES = [
 
 const usage = () => {
 	const names = fs.readdirSync(playbooks).map((f) => f.replace(/\.md$/, ""));
-	console.error("Usage: node open-run.mjs [--slug <task-slug>] <playbook | path/to/playbook.md> <work-dir>");
-	console.error("       node open-run.mjs --dry-run <playbook | path/to/playbook.md> [work-dir]");
-	console.error("       node open-run.mjs --check <todo.md | task-slug.todo.md>");
+	console.error("Usage: node open-run.mjs --dry-run <playbook | path/to/playbook.md>");
 	console.error(`Playbooks: figure-it-out, ${names.sort().join(", ")}`);
 	process.exit(2);
 };
@@ -58,7 +54,7 @@ function phaseSteps(lines) {
 	return lines.filter((line) => /^## Phase /.test(line)).map((line) => [line.replace(/^## /, "")]);
 }
 
-function open(playbook, dir, slug, dryRun) {
+function print(playbook) {
 	const project = playbook.endsWith(".md");
 	const name = project ? path.basename(playbook, ".md") : playbook;
 	const figure = !project && name === "figure-it-out";
@@ -83,77 +79,22 @@ function open(playbook, dir, slug, dryRun) {
 	const steps = figure ? phaseSteps(lines) : numberedSteps(lines);
 	const shipsCode = figure || name === "opening-a-pr" || text.includes("**Opening a PR**");
 
-	// A Codex shell started from Claude Code inherits CLAUDE_CODE_SESSION_ID, and the reverse holds too,
-	// so no order picks the right runtime: the list names every id present, and either hook owns it.
-	const sessions = [...new Set([process.env.CLAUDE_CODE_SESSION_ID, process.env.CODEX_THREAD_ID].filter((id) => SLUG.test(id ?? "")))];
 	const body = [`# ${name}`, "", `Steps copied from ${project ? source : path.relative(skills, source)}.`, ""];
-	if (sessions.length) body.push(...sessions.map(sessionHeader), "");
 	for (const step of steps) body.push(`- [ ] ${step[0]}`, ...step.slice(1));
 	const unwritten = !steps.length && !shipsCode;
 	if (unwritten) body.push(`- [ ] ${name} has no numbered steps. Replace this line with the run's own steps.`);
 	if (shipsCode) body.push("", "## Commit and PR gates", "", ...PR_GATES.map((gate) => `- [ ] ${gate}`));
 	const counts = `${steps.length} steps${unwritten ? ", 1 to write" : ""}${shipsCode ? `, ${PR_GATES.length} PR gates` : ""}`;
 
-	if (dryRun) {
-		console.log(`${body.join("\n")}\n\ndry run, nothing written: ${counts}`);
-		return;
-	}
-
-	fs.mkdirSync(dir, { recursive: true });
-	const { todo, trail } = runFiles(dir, slug);
-
-	if (fs.existsSync(todo)) {
-		const owners = listSessions(fs.readFileSync(todo, "utf8"));
-		const mine = owners.length ? owners.some((id) => sessions.includes(id)) : !sessions.length;
-		if (!mine) {
-			const whose = owners.length ? `belongs to session ${owners.join(", ")}, not this one` : "has no Session: line, so this session did not open it";
-			console.error(`open-run: ${todo} ${whose}. Pass --slug <task-slug> or choose another work dir.`);
-			process.exit(2);
-		}
-		// A reopen adds no id: one this session only inherited would let it adopt, and be held on, another's list.
-		console.log(`${todo} exists; left as is`);
-	} else {
-		fs.writeFileSync(todo, body.join("\n") + "\n");
-		console.log(`${todo}: ${counts}`);
-	}
-
-	if (fs.existsSync(trail)) console.log(`${trail} exists; left as is`);
-	else {
-		fs.copyFileSync(trailHeader, trail);
-		console.log(`${trail}: started`);
-	}
-}
-
-function check(file) {
-	const open = [];
-	fs.readFileSync(file, "utf8")
-		.split(/\r?\n/)
-		.forEach((line, i) => {
-			if (!line.startsWith("- [ ] ")) return;
-			if (RESOLVED.test(line)) return;
-			open.push(`${file}:${i + 1}: ${line.slice(6)}`);
-		});
-	for (const line of open) console.log(line);
-	console.log(`${open.length} open`);
-	process.exit(open.length ? 1 : 0);
+	console.log(`${body.join("\n")}\n\ndry run, nothing written: ${counts}`);
 }
 
 let args;
 try {
-	args = parseArgs({ allowPositionals: true, options: { check: { type: "boolean" }, "dry-run": { type: "boolean" }, slug: { type: "string" } } });
+	args = parseArgs({ allowPositionals: true, options: { "dry-run": { type: "boolean" } } });
 } catch {
 	usage();
 }
 const { values, positionals } = args;
-if (values.check) {
-	if (positionals.length !== 1 || values.slug !== undefined || values["dry-run"]) usage();
-	check(positionals[0]);
-} else {
-	const dryRun = Boolean(values["dry-run"]);
-	if (positionals.length !== 2 && !(dryRun && positionals.length === 1)) usage();
-	if (values.slug !== undefined && !SLUG.test(values.slug)) {
-		console.error(`--slug ${JSON.stringify(values.slug)}: use ASCII letters, digits, - and _, starting with a letter or digit.`);
-		process.exit(2);
-	}
-	open(positionals[0], positionals[1], values.slug, dryRun);
-}
+if (!values["dry-run"] || positionals.length < 1 || positionals.length > 2) usage();
+print(positionals[0]);
