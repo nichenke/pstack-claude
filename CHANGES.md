@@ -2,6 +2,16 @@
 
 This file is the release changelog, with one `## <version> - <title>` entry per release, newest first. The Cursor-to-Claude rewrite rules live in [`tools/substitutions.json`](tools/substitutions.json), and the [sync boundary](CONTRIBUTING.md#the-sync-boundary) in `CONTRIBUTING.md` defines how a change to upstream's skill content is declared.
 
+## 0.9130.2 - poteto-mode's todolist is the native task tool
+
+poteto-mode's todolist becomes the session's own task tool, `TaskCreate` and `TaskUpdate` on Claude Code and `update_plan` on Codex, with an uncommitted `todo.md` as the fallback only when no task tool exists. The [retest](docs/analysis/2026-11-08-native-task-tools-eval-analysis.md) (nichenke/harness-config#527) found native matching or beating `todo.md` on both runtimes, and the Stop hook holding one stop in 120 runs. Decided in nichenke/harness-config#540.
+
+- `poteto-mode/SKILL.md` names the task tools, says to load them with `ToolSearch` on Claude Code, marks a dropped step completed with `skip: <reason>`, and drops the `CLAUDE_CODE_ENABLE_TODO_TOOLS` instruction, since the environment that enables the tools is configured outside the skill. **Start the run** creates one task for each line of `open-run.mjs --dry-run`, copies the decision-log template to `decisions.tsv`, and lists the tasks before the final reply.
+- `scripts/open-run.mjs` keeps only `--dry-run <playbook>`. Its output is unchanged apart from the `Session:` header line, which is no longer printed. Without `--dry-run` it exits 2 with a usage message. The writing mode, `--slug` and `--check` are removed.
+- Removed: `scripts/run-list.mjs`, the `hooks/run-gate.mjs` Stop hook and its `hooks.json` entry, `evals/run-gate/`, and their tests and fixtures. The harness is recoverable at `629b96e`.
+- `tests/skill-rules.test.mjs` pins the new todolist, fallback and `--dry-run` wording in place of the old pins, and `tests/open-run.test.mjs` keeps the dry-run cases.
+- The carried 0.9.89, 0.9.90 and 0.9.91 entries below describe the retired mechanism and stay as history.
+
 ## 0.9130.1 - The nichenke fork rebased onto upstream 0.9.130
 
 The fork's run-gate commits move from upstream 0.9.88 (`963781d`) onto `michael-denyer/pstack-claude` `main` at 0.9.130 (`d88063f`), so the run-gate retest (nichenke/harness-config#527) measures the fork against current upstream. Tracked in nichenke/harness-config#528. The fork's 0.9.89, 0.9.90 and 0.9.91 entries are kept below as carried sections, because upstream released different content under those numbers.
